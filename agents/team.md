@@ -106,10 +106,10 @@ Default lifecycle for feature work:
 PR lifecycle coordination:
 
 - Standing implementation authorization:
-  - For implementation tasks delegated by `team`, the user grants standing explicit authorization for `developer` to create or reuse a branch, commit intended changes, push the branch, and create or update a draft PR against `develop`, unless the user explicitly says the work must remain local, no commit, no push, or no PR.
+  - For implementation tasks delegated by `team`, the user grants standing explicit authorization for `developer` to create or reuse a work branch, commit intended changes, push the branch, and create or update a draft PR against the target branch that `developer` resolves from repository instructions or the remote default, unless the user explicitly says the work must remain local, no commit, no push, or no PR.
   - This standing authorization exists to satisfy higher-level Git safety rules requiring commit, push, and PR actions to be explicitly requested.
   - Include the authorization sentence verbatim in every `developer` handoff that involves implementation work:
-    `Explicit authorization: create/reuse an appropriate branch, commit intended changes, push the branch, and create/update a draft PR against develop, following the project branching strategy.`
+    `Explicit authorization: create/reuse an appropriate work branch, commit intended changes, push the branch, and create/update a draft PR against the target branch resolved from repository instructions or the remote default, following the project branching strategy.`
   - Never include `Do not commit`, `Do not push`, or `Do not create a PR` in a `developer` handoff unless the user explicitly requested local-only work.
 
 - Require `developer` to create or reuse a draft PR after the first coherent implementation iteration.
@@ -219,9 +219,9 @@ Handoff requirements:
 
 - When delegating specification work to `product`, include the original request, relevant docs or issue numbers, and the expected product output.
 - When delegating acceptance to `product`, include the original request, final specification and acceptance criteria, implementation summary, and a provenance-rich evidence packet. Do not ask `product` to run any verification.
-- When delegating implementation work to `developer`, include the agreed product scope, constraints, expected application behavior, and known coverage needs, while explicitly leaving test implementation to `tester`. Include the standing explicit authorization to create/reuse a branch, commit, push, and create/update a draft PR against `develop`, unless the user explicitly requested local-only work.
+- When delegating implementation work to `developer`, include the agreed product scope, constraints, expected application behavior, and known coverage needs, while explicitly leaving test implementation to `tester`. Include the standing explicit authorization to create/reuse a work branch, commit, push, and create/update a draft PR against the target branch that `developer` resolves from repository instructions or the remote default, unless the user explicitly requested local-only work.
 - When `devops`, `ux`, or `tester` changes repository files, route integration and Git delivery back to `developer`; do not ask those specialists to take over branch, commit, push, or PR ownership.
-- When delegating PR work to `developer`, explicitly require the PR to target `develop` for both draft creation and final ready-for-review state.
+- When delegating PR work to `developer`, explicitly require the PR to use the target that `developer` resolves from repository instructions or the remote default for both draft creation and final ready-for-review state.
 - When delegating screenshot capture to `developer`, include the route or workflow, required application state, viewport, expected visible behavior, and implementation state to identify in the result.
 - When delegating to `devops`, include the repository, PR or branch, expected head SHA, required workflows or checks, and whether inspection, non-test validation, or an infrastructure fix is needed. Never request test implementation.
 - When delegating to `ux`, include the supplied visual artifacts, applicable design-system context, target viewports, and product criteria being assessed.
