@@ -9,6 +9,7 @@ This catalog documents the local reusable GitHub Actions implemented under `.git
 | Set Git Ref | `.github/actions/git-ref` | Create or move any full Git ref, including branch and tag refs. | [git-ref.md](git-ref.md) |
 | Set Workflow State | `.github/actions/workflow-state` | Enable or disable a GitHub Actions workflow through the GitHub API. | [workflow-state.md](workflow-state.md) |
 | Create or Update Pull Request | `.github/actions/pull-request` | Reuse one promotion or automation pull request for a stable head/base pair. | [pull-request.md](pull-request.md) |
+| Lifecycle Tag Gate | `.github/actions/tag-gate` | Decide whether a lifecycle workflow should run by comparing source and target tags. | [tag-gate.md](tag-gate.md) |
 | Set Git Tag | `.github/actions/tag` | Preserve legacy lightweight-tag behavior for existing callers. Prefer Set Git Ref for new work. | [tag.md](tag.md) |
 
 ## Common expectations
@@ -23,6 +24,7 @@ This catalog documents the local reusable GitHub Actions implemented under `.git
 Grant only the permissions required by the action in the target repository:
 
 - Ref and tag writers need `contents: write`.
+- Tag gate reads need repository tag access; same-repository workflows commonly use `contents: read` with checkout.
 - Workflow state updates need `actions: write`.
 - Pull request creation or update needs `pull-requests: write`; auto-merge also requires repository settings and branch protection to allow auto-merge for the token.
 
