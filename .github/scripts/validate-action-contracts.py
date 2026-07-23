@@ -51,6 +51,23 @@ EXPECTED_CONTRACTS = {
         "token_env": "WORKFLOW_STATE_TOKEN",
         "token_error": 'Input "token" must be a non-empty string',
     },
+    Path(".github/actions/tag-gate/action.yml"): {
+        "name": "Lifecycle Tag Gate",
+        "inputs": {
+            "source_tag": {"required": True},
+            "target_tag": {"required": True},
+            "repository": {"required": False, "default": "${{ github.repository }}"},
+            "remote": {"required": False, "default": "origin"},
+        },
+        "outputs": {"should_run", "source_sha", "target_sha", "short_sha", "reason"},
+        "documentation": Path(".github/actions/tag-gate/README.md"),
+        "required_script_snippets": [
+            "git check-ref-format",
+            "source-missing",
+            "already-current",
+            "pending",
+        ],
+    },
 }
 
 
@@ -138,6 +155,17 @@ def validate_token_validation(path: Path, metadata: dict[str, Any], token_env: s
         raise ValidationError(f"{path}: script must explicitly fail on an empty token input")
 
 
+def validate_action_script(path: Path, snippets: list[str]) -> None:
+    script_path = path.with_name("tag-gate.sh")
+    if not script_path.is_file():
+        raise ValidationError(f"{script_path}: expected action shell script to exist")
+
+    text = script_path.read_text(encoding="utf-8")
+    missing = [snippet for snippet in snippets if snippet not in text]
+    if missing:
+        raise ValidationError(f"{script_path}: missing script snippets: {', '.join(missing)}")
+
+
 def validate_contract(path: Path, contract: dict[str, Any]) -> None:
     metadata = load_yaml(path)
     if metadata.get("name") != contract["name"]:
@@ -146,7 +174,10 @@ def validate_contract(path: Path, contract: dict[str, Any]) -> None:
     validate_inputs(path, metadata, contract["inputs"])
     validate_outputs(path, metadata, contract["outputs"])
     validate_documentation(contract["documentation"])
-    validate_token_validation(path, metadata, contract["token_env"], contract["token_error"])
+    if "token_env" in contract:
+        validate_token_validation(path, metadata, contract["token_env"], contract["token_error"])
+    if "required_script_snippets" in contract:
+        validate_action_script(path, contract["required_script_snippets"])
 
 
 def main() -> int:
