@@ -2,6 +2,8 @@
 
 Status: implemented for GitHub issue #2.
 
+Consumer-facing documentation for the current reusable actions lives in the [actions catalog](README.md). This page remains as historical product context for the original generic ref and workflow-state work.
+
 ## Product goal
 
 Provide reusable GitHub Actions helpers for repository lifecycle workflows that need to move Git refs and enable or disable workflows without copying project-specific scripts between repositories.
