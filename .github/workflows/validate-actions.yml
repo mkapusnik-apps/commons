@@ -2,7 +2,9 @@ name: Validate GitHub Actions
 
 on:
   pull_request:
-    branches: [ master ]
+    branches:
+      - develop
+      - master
 
 permissions:
   contents: read
