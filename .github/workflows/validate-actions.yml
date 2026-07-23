@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install YAML parser
         run: python3 -m pip install --user --disable-pip-version-check PyYAML==6.0.3
@@ -26,3 +26,6 @@ jobs:
 
       - name: Validate reusable action contracts
         run: python3 .github/scripts/validate-action-contracts.py
+
+      - name: Test lifecycle tag gate
+        run: .github/scripts/test-tag-gate.sh

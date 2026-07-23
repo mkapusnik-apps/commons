@@ -1,0 +1,50 @@
+name: Lifecycle Tag Gate
+
+description: |
+  Gate lifecycle workflows by comparing a source lifecycle tag with a target lifecycle tag.
+
+inputs:
+  source_tag:
+    description: Source lifecycle tag name that must exist before the workflow should run.
+    required: true
+  target_tag:
+    description: Target lifecycle tag name that is current when it points at the same SHA as source_tag.
+    required: true
+  repository:
+    description: Repository in owner/repo form. Defaults to the current workflow repository.
+    required: false
+    default: ${{ github.repository }}
+  remote:
+    description: Git remote name or URL used to read lifecycle tags.
+    required: false
+    default: origin
+
+outputs:
+  should_run:
+    description: 'true only when source_tag exists and target_tag is missing or points at a different SHA.'
+    value: ${{ steps.gate.outputs.should_run }}
+  source_sha:
+    description: Commit SHA currently referenced by source_tag, or an empty string when source_tag is missing.
+    value: ${{ steps.gate.outputs.source_sha }}
+  target_sha:
+    description: Commit SHA currently referenced by target_tag, or an empty string when target_tag is missing.
+    value: ${{ steps.gate.outputs.target_sha }}
+  short_sha:
+    description: Short source SHA when source_tag exists; otherwise an empty string.
+    value: ${{ steps.gate.outputs.short_sha }}
+  reason:
+    description: Lifecycle gate decision reason. One of source-missing, already-current, or pending.
+    value: ${{ steps.gate.outputs.reason }}
+
+runs:
+  using: composite
+  steps:
+    - id: gate
+      name: Evaluate lifecycle tag gate
+      shell: bash
+      run: "$GITHUB_ACTION_PATH/tag-gate.sh"
+      env:
+        TAG_GATE_SOURCE_TAG: ${{ inputs.source_tag }}
+        TAG_GATE_TARGET_TAG: ${{ inputs.target_tag }}
+        TAG_GATE_REPOSITORY: ${{ inputs.repository || github.repository }}
+        TAG_GATE_REMOTE: ${{ inputs.remote }}
