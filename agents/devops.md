@@ -72,6 +72,7 @@ permission:
     "flutter *": allow
     "npm *": allow
     "node *": allow
+    "rg *": allow
   github_push_files: deny
   github_create_or_update_file: deny
   github_delete_file: deny
