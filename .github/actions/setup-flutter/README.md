@@ -11,7 +11,7 @@ Reference the action by its repository path and pin Commons to the immutable ful
 ```yaml
 steps:
   - name: Set up Flutter
-    uses: mkapusnik/commons/.github/actions/setup-flutter@<40-character-commons-commit-sha>
+    uses: mkapusnik-apps/commons/.github/actions/setup-flutter@<40-character-commons-commit-sha>
 ```
 
 Do not use a moving branch such as `master` for production workflows. A full commit SHA prevents later Commons updates from changing the action implementation without a corresponding pin update.
