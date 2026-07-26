@@ -23,7 +23,7 @@ runs:
       with:
         github-token: ${{ inputs.token }}
         script: |
-          const tag = `${{ inputs.tag }}`.trim();
+          const tag = (process.env.TAG_NAME ?? '').trim();
           if (!tag) throw new Error('Input "tag" must be a non-empty string');
 
           const props = {
@@ -31,7 +31,7 @@ runs:
             repo: context.repo.repo,
           };
 
-          const sha = `${{ inputs.commit_sha }}`.trim() || context.sha;
+          const sha = (process.env.TAG_COMMIT_SHA ?? '').trim() || context.sha;
           const ref = `refs/tags/${tag}`;
           const apiRef = `tags/${tag}`;
 
@@ -69,3 +69,6 @@ runs:
             }
             core.info(`Created ${ref} at ${sha}`);
           }
+      env:
+        TAG_NAME: ${{ inputs.tag }}
+        TAG_COMMIT_SHA: ${{ inputs.commit_sha }}
