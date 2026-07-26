@@ -28,8 +28,10 @@ The token needs `contents: write` in the current repository. The default `GITHUB
 
 ## Success behavior
 
-- If the tag does not exist, the action creates `refs/tags/<tag>` at `commit_sha` or `context.sha`.
-- If creating the tag returns GitHub's `422` response, the action assumes the tag already exists and force-updates `tags/<tag>` to the target SHA.
+- The action first looks up the exact `tags/<tag>` ref in the current repository.
+- If the tag exists, the action force-updates it to `commit_sha` or `context.sha` without first attempting creation.
+- If and only if the lookup returns `404 Not Found`, the action creates the lightweight `refs/tags/<tag>` ref at the target SHA.
+- Logs identify whether the action is creating or updating the tag without including the token.
 
 ## No-op behavior
 
@@ -37,11 +39,12 @@ The action does not detect or report no-op updates. If the tag already points at
 
 ## Failure behavior
 
-The action fails when `tag` is empty, the token cannot create or update refs, the commit SHA is invalid or inaccessible, or GitHub rejects the create/update request. Validation is intentionally minimal to preserve the legacy behavior.
+The action fails when `tag` is empty, the token cannot read or mutate the ref, the commit SHA is invalid or inaccessible, or GitHub rejects an API request. Lookup failures other than the expected exact-ref `404` are reported as lookup failures and do not trigger creation. Create and update failures identify the failed operation and do not fall back to the other mutation. Validation is intentionally minimal to preserve the legacy behavior.
 
 ## Notable edge cases
 
 - This action only targets the current repository from the workflow context; it has no `repository` input.
-- It always force-updates existing tags after the create call returns `422`.
+- It always force-updates an existing tag after confirming that the exact ref exists.
+- Race-condition detection, retries, and recovery are not provided. If the ref changes between lookup and mutation, the resulting create or update failure remains visible.
 - It does not validate the tag name beyond checking that it is non-empty before calling GitHub.
 - It does not expose `previous_sha`, `new_sha`, or `changed`; use `Set Git Ref` when consumers need those outputs.
