@@ -9,4 +9,4 @@ Repository for shared tools, github actions, AI agents, etc:
 
 ## Branching Strategy
 
-CI/CD workflow is leveraging GitHub Actions, detailed implementation described in [.github/workflow.md](.github/workflow.md)
+CI/CD workflow is leveraging GitHub Actions, detailed implementation described in [.github/workflows.md](.github/workflows.md)
