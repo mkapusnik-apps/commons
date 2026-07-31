@@ -25,10 +25,21 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      - name: Require standalone action metadata
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          action_files=(.github/actions/**/action.yml)
+          if (( ${#action_files[@]} == 0 )); then
+            echo "::error::No files matched .github/actions/**/action.yml"
+            exit 1
+          fi
+
       - name: Validate YAML syntax
         uses: GrantBirki/json-yaml-validate@v5
         with:
           files: .github/actions/**/action.yml
+          use_gitignore: 'false'
 
   action-metadata-schema:
     name: Validate action metadata schema
@@ -40,7 +51,8 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Validate action.yml metadata
-        uses: dsanders11/json-schema-validate-action@f04ef3bca791388d2bd9ff3a50b27d1b2572158e # v2.1.0
+        uses: cardinalby/schema-validator-action@v3
         with:
-          files: .github/actions/**/action.yml
+          file: .github/actions/**/action.yml
+          fileParser: yaml
           schema: https://raw.githubusercontent.com/SchemaStore/schemastore/d9d98e69894ebd7a50965dc58d61951e9d7f23a7/src/schemas/json/github-action.json
