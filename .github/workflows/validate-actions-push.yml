@@ -1,0 +1,58 @@
+name: Validate GitHub Actions (Push)
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - .github/actions/**/action.yml
+
+permissions:
+  contents: read
+
+jobs:
+  action-metadata-schema:
+    name: Validate action metadata schema
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Require standalone action metadata
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          action_files=(.github/actions/**/action.yml)
+          if (( ${#action_files[@]} == 0 )); then
+            echo "::error::No files matched .github/actions/**/action.yml"
+            exit 1
+          fi
+
+          for action_file in "${action_files[@]}"; do
+            if [[ ! -f "$action_file" ]]; then
+              echo "::error file=$action_file::Matched path is not a regular file"
+              exit 1
+            fi
+          done
+
+      - name: Check out pinned SchemaStore schema
+        uses: actions/checkout@v7
+        with:
+          repository: SchemaStore/schemastore
+          ref: d9d98e69894ebd7a50965dc58d61951e9d7f23a7
+          path: .schemastore
+          sparse-checkout: src/schemas/json/github-action.json
+          sparse-checkout-cone-mode: 'false'
+          persist-credentials: 'false'
+
+      - name: Validate action.yml metadata
+        uses: GrantBirki/json-yaml-validate@v5
+        with:
+          files: .github/actions/**/action.yml
+          json_schema: .schemastore/src/schemas/json/github-action.json
+          json_schema_version: draft-07
+          yaml_as_json: 'true'
+          ajv_strict_mode: 'false'
+          use_gitignore: 'false'
+          allow_multiple_documents: 'true'
