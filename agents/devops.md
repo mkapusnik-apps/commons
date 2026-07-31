@@ -56,11 +56,8 @@ permission:
     "git log*": allow
     "gh *": deny
     "gh auth status*": allow
-    "gh pr checks*": allow
-    "gh pr view*": allow
-    "gh run list*": allow
-    "gh run view*": allow
-    "gh run watch*": allow
+    "gh pr *": allow
+    "gh run *": allow
     "gh issue list*": allow
     "gh issue view*": allow
     "gh issue create*": allow
@@ -74,6 +71,7 @@ permission:
     "node *": allow
     "rg *": allow
     "actionlint *": allow
+    "printf *": allow
   github_push_files: deny
   github_create_or_update_file: deny
   github_delete_file: deny
