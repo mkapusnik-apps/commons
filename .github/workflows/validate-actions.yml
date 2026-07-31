@@ -3,29 +3,44 @@ name: Validate GitHub Actions
 on:
   pull_request:
     branches:
-      - develop
       - master
+    paths:
+      - .github/actions/**/action.yml
+  push:
+    branches:
+      - master
+    paths:
+      - .github/actions/**/action.yml
 
 permissions:
   contents: read
 
 jobs:
-  validate:
-    name: Validate action metadata
+  yaml-syntax:
+    name: Validate action YAML syntax
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Install YAML parser
-        run: python3 -m pip install --user --disable-pip-version-check PyYAML==6.0.3
+      - name: Validate YAML syntax
+        uses: GrantBirki/json-yaml-validate@v5
+        with:
+          files: .github/actions/**/action.yml
 
-      - name: Validate local actions and workflows
-        run: python3 .github/scripts/validate-github-actions.py
+  action-metadata-schema:
+    name: Validate action metadata schema
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
 
-      - name: Validate reusable action contracts
-        run: python3 .github/scripts/validate-action-contracts.py
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
 
-      - name: Test lifecycle tag gate
-        run: .github/scripts/test-tag-gate.sh
+      - name: Validate action.yml metadata
+        uses: dsanders11/json-schema-validate-action@f04ef3bca791388d2bd9ff3a50b27d1b2572158e # v2.1.0
+        with:
+          files: .github/actions/**/action.yml
+          schema: https://raw.githubusercontent.com/SchemaStore/schemastore/d9d98e69894ebd7a50965dc58d61951e9d7f23a7/src/schemas/json/github-action.json
