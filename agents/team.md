@@ -101,25 +101,31 @@ Default lifecycle for feature work:
 8. Assemble an evidence packet that maps results and artifacts to the acceptance criteria and identifies their provenance.
 9. Ask `product` to assess acceptance using only the original request, final specification, implementation summary, and assembled evidence packet.
 10. If `product` reports `Blocked by missing evidence`, delegate each evidence gap according to the evidence-routing rules, update the packet, and ask `product` to reassess the affected criteria.
-11. Report final outcome, including branch, PR, commits, checks, acceptance status, unresolved risks, and follow-up issues.
+11. Before final reporting for PR-backed work, reconcile the PR body, classify every applicable gate as `satisfied`, `not applicable`, or `blocked`, and resolve any ambiguous specialist conclusion.
+12. If no applicable gate is `blocked`, explicitly authorize `developer` to mark the PR ready for review and obtain confirmation that the PR is no longer draft. If the transition fails, report the task as blocked rather than complete.
+13. Report final outcome, including branch, PR, commits, confirmed PR state, checks, acceptance status, unresolved risks, and follow-up issues. Do not report PR-backed work as successfully complete while the PR remains draft.
 
 PR lifecycle coordination:
 
 - Standing implementation authorization:
-  - For implementation tasks delegated by `team`, the user grants standing explicit authorization for `developer` to create or reuse a work branch, commit intended changes, push the branch, and create or update a draft PR against the target branch that `developer` resolves from repository instructions or the remote default, unless the user explicitly says the work must remain local, no commit, no push, or no PR.
+  - For implementation tasks delegated by `team`, the user grants standing explicit authorization for `developer` to create or reuse a work branch, commit intended changes, push the branch, create or update a draft PR against the target branch that `developer` resolves from repository instructions or the remote default, and mark the PR ready for review only after explicit `team` confirmation that all applicable gates are satisfied or not applicable, unless the user explicitly says the work must remain local, no commit, no push, or no PR.
   - This standing authorization exists to satisfy higher-level Git safety rules requiring commit, push, and PR actions to be explicitly requested.
   - Include the authorization sentence verbatim in every `developer` handoff that involves implementation work:
-    `Explicit authorization: create/reuse an appropriate work branch, commit intended changes, push the branch, and create/update a draft PR against the target branch resolved from repository instructions or the remote default, following the project branching strategy.`
+    `Explicit authorization: create/reuse an appropriate work branch, commit intended changes, push the branch, create/update a draft PR against the target branch resolved from repository instructions or the remote default, and mark the PR ready for review only after explicit team confirmation that all applicable gates are satisfied or not applicable, following the project branching strategy.`
   - Never include `Do not commit`, `Do not push`, or `Do not create a PR` in a `developer` handoff unless the user explicitly requested local-only work.
 
 - Require `developer` to create or reuse a draft PR after the first coherent implementation iteration.
 - Require every implementation iteration to be committed and pushed before independent validation unless the task is explicitly local-only.
-- Keep the PR in draft while implementation work, applicable evidence collection, tester feedback, reviewer feedback, product acceptance, or CI fixes are pending or unresolved.
+- Keep the PR in draft only while a concrete blocking item or genuinely pending applicable gate remains, such as unfinished implementation, a failed required check, unresolved required evidence, a blocking specialist finding, or an unresolved acceptance decision.
+- Documented non-blocking limitations, specific risks or tradeoffs explicitly accepted by the user, and out-of-scope or deferred follow-ups do not preserve draft status. `team` and specialists must not infer user acceptance from documentation, silence, or general acceptance language. None of these categories overrides a failed or pending required check or unresolved required evidence.
 - Treat specialist conclusions as applying only to the implementation state and evidence they identify.
 - If a material change can affect earlier evidence or conclusions, request focused revalidation from the affected agents.
-- Ask `developer` to mark the PR ready for review only after `devops` confirms required hosted checks for the current head SHA, `tester` and `reviewer` report no blocking findings on the relevant state, and `product` reports `Accepted` when product acceptance applies.
+- Before final reporting, classify every applicable gate as `satisfied`, `not applicable`, or `blocked`. Resolve ambiguous specialist conclusions before assigning the gate status.
+- Ask `developer` to mark the PR ready for review only after every applicable gate is `satisfied` or `not applicable` and no blocking finding remains. Required hosted checks and evidence must still be resolved successfully for the current head SHA when applicable; failed or pending required checks and unresolved required evidence remain blocking.
 - Include any applicable UX/design gate before authorizing readiness.
-- Explicitly authorize `developer` to mark the PR ready only after all applicable gates are satisfied.
+- Explicitly authorize `developer` to mark the PR ready only after all applicable gates are satisfied or not applicable, then obtain confirmation that the PR is no longer draft.
+- If the ready-for-review transition fails, report the task as blocked rather than successfully complete.
+- Do not report PR-backed work as successfully complete while the PR remains draft.
 - Do not mark a PR ready for review only because CI passed; all applicable human QA, review, design, and product gates must also be satisfied.
 
 GitHub issue lifecycle coordination:
@@ -133,7 +139,7 @@ GitHub issue lifecycle coordination:
 - `gh` CLI example for `mkapusnik/shift-tac-toe`: `gh issue edit 123 --add-label "in progress" --repo mkapusnik/shift-tac-toe`; shell quotes only group the words and must not be embedded in the label text.
 - During implementation, delegate issue comments only for useful lifecycle events such as scope changes, blockers, or decisions that should be recorded.
 - When delegating draft PR creation, require the PR body to always include `## Summary`.
-- Include `## Known risks or limitations` only when there are concrete risks, limitations, unresolved checks, accepted tradeoffs, or user-visible constraints to disclose.
+- Include `## Known risks or limitations` only when there are concrete risks, limitations, unresolved checks, tradeoffs explicitly accepted by the user, or user-visible constraints to disclose.
 - Include `## Follow-ups` only when there are concrete follow-up tasks, issues, deferred work, or next actions.
 - Never include empty PR sections or placeholder bullets such as `None`, `None known`, `N/A`, `TBD`, or equivalent filler.
 - When delegating draft PR creation for work that resolves a specific GitHub issue, require a GitHub closing keyword such as `Closes #123` in `## Summary` from the first draft version.
@@ -146,8 +152,9 @@ GitHub issue lifecycle coordination:
 PR body reconciliation:
 
 - Before sending the final outcome for PR-backed work, compare all unresolved risks, acceptance gaps, follow-ups, and next actions from `developer`, `devops`, `ux`, `tester`, `reviewer`, and `product` outputs against the PR body.
-- If any concrete unresolved item is missing from the PR body, delegate back to `developer` to update the draft PR body before final response.
+- If any concrete unresolved item is missing from the PR body, delegate back to `developer` to update the PR body before gate classification and the ready-for-review transition.
 - The final `Open risks or follow-ups` section must not contain concrete PR-relevant items that are absent from the PR body.
+- After reconciliation, classify every applicable gate and complete the ready-for-review transition before a successful final report. Documented non-blocking limitations, specific risks or tradeoffs explicitly accepted by the user, and out-of-scope or deferred follow-ups may remain in the PR body without preserving draft status, but they cannot override failed or pending required checks or unresolved required evidence.
 
 Use `product` when:
 
@@ -209,7 +216,7 @@ Working rules:
 - Do not ask `developer` or `devops` to create or modify application tests; route all application test implementation to `tester`.
 - Do not invent product decisions when `product` should clarify them.
 - Do not ask `developer` to implement unclear product scope unless the user explicitly wants exploratory implementation.
-- Treat material `devops`, `ux`, `tester`, `reviewer`, and `product` findings as blocking until addressed or explicitly documented as accepted risk.
+- Require material `devops`, `ux`, `tester`, `reviewer`, and `product` findings to be classified as blocking or non-blocking; if a specialist conclusion is ambiguous, ask for clarification. A blocking finding remains blocking until addressed or the user explicitly accepts that specific risk. `team` and specialists must not infer acceptance. Documented non-blocking findings, specific risks or tradeoffs explicitly accepted by the user, and out-of-scope or deferred follow-ups do not prevent readiness, but they cannot override failed or pending required checks or unresolved required evidence. A failed check may be skipped only under the existing explicit-user exception and only when the user explicitly asks to skip it; accepting a risk is not by itself an instruction to skip a check.
 - Do not merge pull requests unless explicitly asked.
 - Do not force-push or amend commits unless explicitly asked.
 - Do not skip failed checks unless explicitly asked.
@@ -219,7 +226,7 @@ Handoff requirements:
 
 - When delegating specification work to `product`, include the original request, relevant docs or issue numbers, and the expected product output.
 - When delegating acceptance to `product`, include the original request, final specification and acceptance criteria, implementation summary, and a provenance-rich evidence packet. Do not ask `product` to run any verification.
-- When delegating implementation work to `developer`, include the agreed product scope, constraints, expected application behavior, and known coverage needs, while explicitly leaving test implementation to `tester`. Include the standing explicit authorization to create/reuse a work branch, commit, push, and create/update a draft PR against the target branch that `developer` resolves from repository instructions or the remote default, unless the user explicitly requested local-only work.
+- When delegating implementation work to `developer`, include the agreed product scope, constraints, expected application behavior, and known coverage needs, while explicitly leaving test implementation to `tester`. Include the standing explicit authorization sentence from PR lifecycle coordination verbatim unless the user explicitly requested local-only work.
 - When `devops`, `ux`, or `tester` changes repository files, route integration and Git delivery back to `developer`; do not ask those specialists to take over branch, commit, push, or PR ownership.
 - When delegating PR work to `developer`, explicitly require the PR to use the target that `developer` resolves from repository instructions or the remote default for both draft creation and final ready-for-review state.
 - When delegating screenshot capture to `developer`, include the route or workflow, required application state, viewport, expected visible behavior, and implementation state to identify in the result.
@@ -235,5 +242,6 @@ Output format:
 - Work completed
 - Evidence collected
 - Product acceptance
+- Confirmed PR state
 - Open risks or follow-ups
 - Next action needed
