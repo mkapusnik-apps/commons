@@ -7,7 +7,7 @@ Creates a pull request for a given head/base pair, or updates the existing open 
 The `body`, `title`, `head`, and `base` inputs are passed to the action as runtime data. Callers do not need JavaScript-string escaping workarounds for Markdown bodies that include multiple lines, quotes, apostrophes, backticks, or code fences.
 
 ````yaml
-- uses: ./.github/actions/pull-request
+- uses: mkapusnik-apps/commons/pull-request@v1
   with:
     head: release/promote-candidate
     base: master

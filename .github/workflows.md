@@ -6,7 +6,7 @@ This repository uses `master` as the canonical base branch for pull requests.
 
 The action metadata validation is split by trigger into `Validate GitHub Actions
 (Pull Request)` and `Validate GitHub Actions (Push)`. Both workflows are limited
-to standalone action metadata matching `.github/actions/**/action.yml`. Changes
+to standalone action metadata matching `*/action.yml` in root-level action directories. Changes
 outside that path, including changes under `.github/workflows/`, do not trigger
 either workflow and are not included in their validation scope.
 

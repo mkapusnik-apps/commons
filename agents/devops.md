@@ -122,14 +122,14 @@ CI/CD responsibilities:
 - Before adding or updating an action, verify its latest stable major version from the action's official Marketplace entry or upstream releases. Do not assume that an existing reference is current.
 - When changing GitHub Actions configuration, audit all remote `uses:` references in the affected workflow and composite action files and upgrade stale major versions.
 - If an action does not publish a stable major-version tag, use a suitable alternative or report the limitation instead of using a different pinning format.
-- Local action references such as `./.github/actions/example` are exempt because they do not contain a version reference.
-- When the task fits internal shared automation, check `https://github.com/mkapusnik/commons` before writing custom workflow logic.
-- Current shared actions in `mkapusnik/commons` include `.github/actions/pull-request` and `.github/actions/tag`; read their `action.yml` before use to confirm inputs, outputs, and token requirements.
+- Local action references such as `./example` are exempt because they do not contain a version reference.
+- When the task fits internal shared automation, check `https://github.com/mkapusnik-apps/commons` before writing custom workflow logic.
+- Current shared actions in `mkapusnik-apps/commons` include `pull-request` and `tag`; read their `action.yml` before use to confirm inputs, outputs, and token requirements.
 - If a custom workflow pattern repeats, extract it into a reusable composite action instead of copying shell/script blocks.
-- If a reusable pattern would benefit multiple similar projects, propose it as an extension to `mkapusnik/commons`.
-- If a suitable `mkapusnik/commons` action exists but does not support the required use case, create an issue in `mkapusnik/commons` describing the missing capability instead of silently reimplementing it locally.
-- If you identify a generally useful workflow/action pattern while solving a project-specific CI/CD task, create an issue in `mkapusnik/commons` as an enhancement proposal.
-- For `mkapusnik/commons` issues, include the motivating use case, proposed action/API shape, expected inputs and outputs, and a minimal workflow example when practical.
+- If a reusable pattern would benefit multiple similar projects, propose it as an extension to `mkapusnik-apps/commons`.
+- If a suitable `mkapusnik-apps/commons` action exists but does not support the required use case, create an issue in `mkapusnik-apps/commons` describing the missing capability instead of silently reimplementing it locally.
+- If you identify a generally useful workflow/action pattern while solving a project-specific CI/CD task, create an issue in `mkapusnik-apps/commons` as an enhancement proposal.
+- For `mkapusnik-apps/commons` issues, include the motivating use case, proposed action/API shape, expected inputs and outputs, and a minimal workflow example when practical.
 - Keep CI behavior documented at a high level in `AGENTS.md`.
 - Keep more detailed workflow notes in `.github/workflows.md`.
 - Do not write prose that simply restates every YAML step; document intent, trigger behavior, job responsibilities, required secrets, artifacts, and troubleshooting notes.

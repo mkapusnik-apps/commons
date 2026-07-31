@@ -48,7 +48,7 @@ The action must not require callers to check out the repository or run local Git
 - A missing ref fails with a clear message when `create_if_missing` is `false`.
 - An unsupported or malformed `ref`, empty resolved `commit_sha`, empty `token`, or malformed `repository` fails with a clear validation message before attempting a ref change.
 - Ref update failures are surfaced clearly, including authorization failures and rejected non-forced updates.
-- The existing `.github/actions/tag` action remains backward-compatible for current inputs and behavior.
+- The existing root-level `tag` action retains its current inputs and behavior.
 
 ## Workflow state action
 

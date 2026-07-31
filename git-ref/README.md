@@ -37,13 +37,13 @@ permissions:
 
 steps:
   - name: Move nightly tag
-    uses: mkapusnik/commons/.github/actions/git-ref@v1
+    uses: mkapusnik-apps/commons/git-ref@v1
     with:
       ref: refs/tags/nightly
       token: ${{ github.token }}
 
   - name: Move nightly branch
-    uses: mkapusnik/commons/.github/actions/git-ref@v1
+    uses: mkapusnik-apps/commons/git-ref@v1
     with:
       ref: refs/heads/nightly
       commit_sha: ${{ github.sha }}
@@ -54,7 +54,7 @@ Fail instead of creating a missing ref:
 
 ```yaml
 - name: Update existing release pointer
-  uses: mkapusnik/commons/.github/actions/git-ref@v1
+  uses: mkapusnik-apps/commons/git-ref@v1
   with:
     ref: refs/tags/latest
     commit_sha: ${{ github.sha }}
@@ -64,4 +64,4 @@ Fail instead of creating a missing ref:
 
 Updating multiple refs is not atomic. If a workflow moves more than one ref, handle partial failures explicitly.
 
-For external consumers, pin this shared action to a release tag or immutable commit SHA rather than a moving branch.
+For external consumers, use the floating `v1` tag for compatible v1 updates or pin a reviewed immutable commit SHA for stricter reproducibility. Do not use a moving branch.

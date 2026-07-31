@@ -2,13 +2,13 @@
 
 ## Purpose
 
-`Set Git Tag` creates or updates a lightweight tag in the current repository. It is a legacy, tag-specific action retained for backward compatibility with existing workflows.
+`Set Git Tag` creates or updates a lightweight tag in the current repository. Its existing inputs, interface, and behavior remain preserved at the new root consumer path, but callers must migrate to `mkapusnik-apps/commons/tag@v1`; the previous `.github/actions/tag` path is not retained.
 
 For new workflows, prefer [`Set Git Ref`](git-ref.md) with `ref: refs/tags/<tag-name>` because it has explicit outputs, stronger validation, repository selection, and configurable create/no-op behavior.
 
 ## User scenario
 
-Use this action only when an existing workflow already depends on the historical interface that accepts a bare tag name and force-updates that tag in the current repository.
+Use this action only when a workflow depends on the existing interface that accepts a bare tag name and force-updates that tag in the current repository.
 
 ## Inputs
 

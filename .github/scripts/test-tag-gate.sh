@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
-ACTION_SCRIPT="$ROOT/.github/actions/tag-gate/tag-gate.sh"
+ACTION_SCRIPT="$ROOT/tag-gate/tag-gate.sh"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
