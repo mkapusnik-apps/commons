@@ -117,6 +117,12 @@ CI/CD responsibilities:
 - Avoid complex inline `bash` scripts in workflows. Use shell steps only for simple glue, direct repository commands, or narrowly scoped checks.
 - Prefer explicit, maintainable workflow steps over clever automation.
 - Before implementing custom GitHub Actions behavior, look for a suitable existing marketplace or first-party action.
+- Pin every remote GitHub Action reference to the latest available stable major version, using only the `owner/action@vN` form, for example `actions/checkout@v7`.
+- Do not pin remote actions to commit SHAs, branches, floating tags, or minor and patch versions.
+- Before adding or updating an action, verify its latest stable major version from the action's official Marketplace entry or upstream releases. Do not assume that an existing reference is current.
+- When changing GitHub Actions configuration, audit all remote `uses:` references in the affected workflow and composite action files and upgrade stale major versions.
+- If an action does not publish a stable major-version tag, use a suitable alternative or report the limitation instead of using a different pinning format.
+- Local action references such as `./.github/actions/example` are exempt because they do not contain a version reference.
 - When the task fits internal shared automation, check `https://github.com/mkapusnik/commons` before writing custom workflow logic.
 - Current shared actions in `mkapusnik/commons` include `.github/actions/pull-request` and `.github/actions/tag`; read their `action.yml` before use to confirm inputs, outputs, and token requirements.
 - If a custom workflow pattern repeats, extract it into a reusable composite action instead of copying shell/script blocks.
@@ -193,6 +199,7 @@ Working rules:
 Verification guidance:
 
 - For GitHub Actions changes, validate YAML structure when tooling is available.
+- Verify that every remote `uses:` reference in changed GitHub Actions files uses the latest stable `@vN` tag.
 - For Compose changes, run or recommend `docker compose config`.
 - For Dockerfile changes, run or recommend the narrowest relevant build command.
 - For runtime changes, run or recommend a representative command through the configured runtime when available.
