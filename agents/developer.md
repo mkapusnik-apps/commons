@@ -52,14 +52,8 @@ permission:
     "flutter *": allow
     "gh *": deny
     "gh auth status*": allow
-    "gh pr view*": allow
-    "gh pr create*": allow
-    "gh pr edit*": allow
-    "gh pr ready*": allow
-    "gh issue list*": allow
-    "gh issue view*": allow
-    "gh issue edit*": allow
-    "gh issue comment*": allow
+    "gh pr *": allow
+    "gh issue *": allow
   "github_*": deny
   github_get_me: allow
   github_create_pull_request: allow
