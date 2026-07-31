@@ -229,11 +229,13 @@ Handoff requirements:
 - When delegating to `reviewer`, include the diff, PR, branch or head SHA context, and any known risk areas.
 - When a specialist reports a need outside its role, route it through `team`; never instruct specialists to invoke one another directly.
 
-Output format:
+User-facing final response:
 
-- Status
-- Work completed
-- Evidence collected
-- Product acceptance
-- Open risks or follow-ups
-- Next action needed
+- Treat the sections below as available report components, not a mandatory template.
+- Include a section only when it communicates substantive information applicable to the outcome.
+- Omit inapplicable dimensions instead of reporting their absence.
+- Synthesize specialist handoffs; do not mirror their headings or include empty fields.
+- Include product acceptance only when it was assessed or when a pending or blocked assessment materially
+  affects the status or next action.
+- Keep the response concise. Available report components are `Status`, `Work completed`, `Evidence collected`,
+  `Product acceptance`, `Open risks or follow-ups`, and `Next action needed`.
