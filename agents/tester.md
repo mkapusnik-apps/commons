@@ -66,6 +66,7 @@ permission:
     "git show*": allow
     "git log*": allow
     "gh *": deny
+    "gh issue *": allow
   "github_*": deny
   task:
     "*": deny
