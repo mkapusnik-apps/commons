@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Consumers of the shared actions need immutable versions for reproducibility and floating major versions for compatible updates. After the initial `v1.0.0` release exists, each qualifying push to `master` publishes one ordered semantic version without manual release scheduling.
+Consumers of the shared actions need immutable versions for reproducibility and floating major versions for compatible updates. The initial stable release bootstraps those references from canonical `master`; afterward, each qualifying push to `master` publishes one ordered semantic version without manual release scheduling.
 
 ## Qualifying publication
 
@@ -13,7 +13,15 @@ Consumers of the shared actions need immutable versions for reproducibility and 
 - Closely spaced qualifying pushes are published in order. A later push must not overtake an earlier unpublished push.
 - Classification covers all repository changes since the preceding successfully published immutable version. This ensures that a previous failed publication cannot cause changes to be omitted.
 
-Creating the initial `v1.0.0`, including its `v1` floating tag, is a prerequisite and is not part of this capability.
+## Initial stable bootstrap
+
+Immediately before the issue #28 release automation is merged, capture the full commit SHA at canonical `refs/heads/master`. Create `v1`, `v1.0`, and `v1.0.0` at exactly that revision, then publish a stable, non-draft GitHub release for `v1.0.0` at the same revision. This bootstrap identifies the existing reviewed shared-action implementation; it does not claim that the issue #28 automation is active at the bootstrap revision.
+
+The three initial references have distinct compatibility contracts:
+
+- `v1.0.0` is the immutable semantic-version tag and must never move.
+- `v1.0` is a fixed minor-series reference for the initial stable release and must never move.
+- `v1` is the floating major reference and moves forward to the latest successfully published compatible v1 release.
 
 ## Version classification
 
@@ -50,6 +58,8 @@ A publication is complete only when all of the following identify the pushed hea
 
 An immutable semantic-version tag is never moved, reused, or allocated to another revision. A floating major tag moves to the latest successfully published revision in its own major. Publishing a new major creates or updates that major's floating tag without moving floating tags for earlier majors.
 
+The fixed bootstrap reference `v1.0` is not part of later automatic publications and remains at `v1.0.0`.
+
 ## Retry, conflict, and failure behavior
 
 - Retrying the same revision is idempotent, including after only part of its publication completed.
@@ -61,7 +71,6 @@ An immutable semantic-version tag is never moved, reused, or allocated to anothe
 
 ## Out of scope
 
-- Creating the initial `v1.0.0` release and `v1` floating tag.
 - Updating downstream repositories to consume a newly published version.
 - Pre-release channels, manual release scheduling, or manual version selection.
 - Defining release-note content beyond creating the corresponding GitHub release.
@@ -82,3 +91,6 @@ An immutable semantic-version tag is never moved, reused, or allocated to anothe
 - **HP-28-AC-11:** API-change and affected-action classification are deterministic and version-controlled; absent, invalid, or ambiguous required classification blocks publication.
 - **HP-28-AC-12:** Publication failures visibly identify the affected revision and failed outcome, do not report an inconsistent publication as successful, and allow a safe retry.
 - **HP-28-AC-13:** Contributor documentation explains the qualifying event, version precedence, public API boundary, affected-action counting, declaration requirement, and retry behavior.
+- **HP-28-AC-14:** The bootstrap creates `v1`, `v1.0`, and `v1.0.0` at the same full canonical `refs/heads/master` SHA captured immediately before bootstrap and before the issue #28 automation is merged.
+- **HP-28-AC-15:** `v1.0.0` is immutable, `v1.0` remains fixed at the initial stable release, and only `v1` moves forward to later compatible v1 publications.
+- **HP-28-AC-16:** The bootstrap publishes a stable, non-draft GitHub release for `v1.0.0` whose tag identifies the captured canonical `master` SHA.

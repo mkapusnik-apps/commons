@@ -34,6 +34,7 @@ The default `GITHUB_TOKEN` is usually enough only for the current repository whe
 ## Versioning and pinning
 
 - `v1.0.0` is an immutable release tag for the initial stable root-level action interfaces.
+- `v1.0` is a fixed minor-series reference to `v1.0.0` and does not move.
 - `v1` is a floating major tag that points to the latest compatible v1 release.
 - Breaking action path, input, output, runtime, or behavior changes require a new major release and floating major tag rather than moving `v1` to the incompatible implementation.
 - A reviewed full commit SHA is stricter pinning than `v1` because it cannot move when a compatible release is published.
@@ -41,7 +42,7 @@ The default `GITHUB_TOKEN` is usually enough only for the current repository whe
 
 Release and floating-major tags must be published only after review and merge, and must point to the merged implementation that contains the documented action paths. Local workflows in this repository may use relative paths such as `./git-ref`.
 
-The repository's semantic-version publication and floating-major contract is defined in [semantic-releases.md](semantic-releases.md). Consumers may use a floating major such as `v1` for compatible updates or a full version such as `v1.0.0` when an immutable release is required.
+The repository's semantic-version publication, bootstrap, and floating-major contract is defined in [semantic-releases.md](semantic-releases.md). Consumers may use a floating major such as `v1` for compatible updates, the fixed initial minor reference `v1.0`, or a full version such as `v1.0.0` when an immutable release is required.
 
 ## Historical context
 

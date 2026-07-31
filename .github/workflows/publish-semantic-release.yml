@@ -1,0 +1,32 @@
+name: Publish Semantic Release
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish semantic release
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Check out pushed revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Classify and publish pushed revision
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const semanticRelease = require(
+              './.github/scripts/semantic-release.js',
+            );
+            await semanticRelease.publish({ github, context, core });

@@ -1,0 +1,11 @@
+{
+  "runtimes": {
+    "node": {
+      "image": "node:24",
+      "allowedExecutables": [
+        "node"
+      ],
+      "timeoutSec": 300
+    }
+  }
+}
