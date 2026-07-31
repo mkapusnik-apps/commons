@@ -71,7 +71,9 @@ permission:
     "node *": allow
     "rg *": allow
     "actionlint *": allow
+    "yamllint *": allow
     "printf *": allow
+    "command -v *": allow
   github_push_files: deny
   github_create_or_update_file: deny
   github_delete_file: deny
