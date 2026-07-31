@@ -35,7 +35,7 @@ Tag names are validated with Git ref-name rules before they are used.
 
 This action reads tags with `git ls-remote` and does not require `actions: write`. For same-repository usage with `actions/checkout`, `contents: read` is sufficient.
 
-When using this action from another repository, production consumers should pin `mkapusnik/commons` to a trusted tag or SHA instead of a moving branch ref when practical.
+When using this action from another repository, production consumers should use the floating `v1` tag for compatible updates or pin a reviewed immutable commit SHA for stricter reproducibility. Do not use a moving branch ref.
 
 ## Example
 
@@ -43,7 +43,7 @@ Cross-repository usage:
 
 ```yaml
 - id: tag-gate
-  uses: mkapusnik/commons/.github/actions/tag-gate@master
+  uses: mkapusnik-apps/commons/tag-gate@v1
   with:
     source_tag: staging
     target_tag: production
@@ -70,7 +70,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: tag-gate
-        uses: ./.github/actions/tag-gate
+        uses: ./tag-gate
         with:
           source_tag: staging
           target_tag: production

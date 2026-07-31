@@ -35,7 +35,7 @@ permissions:
 
 steps:
   - name: Disable nightly workflow
-    uses: mkapusnik/commons/.github/actions/workflow-state@v1
+    uses: mkapusnik-apps/commons/workflow-state@v1
     with:
       workflow: nightly.yml
       state: disabled
@@ -46,7 +46,7 @@ Enable a workflow by path after a promotion succeeds:
 
 ```yaml
 - name: Enable production deployment
-  uses: mkapusnik/commons/.github/actions/workflow-state@v1
+  uses: mkapusnik-apps/commons/workflow-state@v1
   with:
     workflow: .github/workflows/deploy-production.yml
     state: enabled
@@ -55,4 +55,4 @@ Enable a workflow by path after a promotion succeeds:
 
 The action avoids API state changes when the workflow is already enabled or already disabled.
 
-For external consumers, pin this shared action to a release tag or immutable commit SHA rather than a moving branch.
+For external consumers, use the floating `v1` tag for compatible v1 updates or pin a reviewed immutable commit SHA for stricter reproducibility. Do not use a moving branch.
