@@ -53,6 +53,7 @@ permission:
     "gh *": deny
     "gh auth status*": allow
     "gh pr *": allow
+    "gh pr merge*": deny
     "gh issue *": allow
   "github_*": deny
   github_get_me: allow
@@ -92,7 +93,7 @@ Default workflow:
 16. Push the work branch.
 17. Create a draft pull request against the resolved target branch; always pass `--base <target-branch>` explicitly.
 18. Use a concise PR body that always includes `## Summary`.
-    - Include `## Known risks or limitations` only when there are concrete risks, limitations, unresolved checks, accepted tradeoffs, or user-visible constraints to disclose.
+    - Include `## Known risks or limitations` only when there are concrete risks, limitations, unresolved checks, tradeoffs explicitly accepted by the user, or user-visible constraints to disclose.
     - Include `## Follow-ups` only when there are concrete follow-up tasks, issues, deferred work, or next actions.
     - Never include empty PR sections or placeholder bullets such as `None`, `None known`, `N/A`, `TBD`, or equivalent filler.
     - When creating or updating a pull request that resolves a specific GitHub issue, include a GitHub closing keyword such as `Closes #123` in the pull request body from the first draft version, preferably under `## Summary`, so the issue auto-closes after merge.
@@ -100,12 +101,14 @@ Default workflow:
     - Before finishing, reconcile the final response with the pull request body.
     - Any concrete item reported in final output under `Open risks or follow-ups`, `Unresolved risks`, `Known risks`, `Follow-ups`, `Next action needed`, or an equivalent section must also be present in the PR body under `## Known risks or limitations` or `## Follow-ups`.
     - If a concrete final-output item is intentionally omitted from the PR body, explicitly state why it is not PR-relevant in the final response.
-19. Keep the pull request in draft while any applicable tester, reviewer, DevOps CI, UX, or product acceptance gate is pending or unresolved.
+19. Keep the pull request in draft only while a concrete blocking item or genuinely pending applicable tester, reviewer, DevOps CI, UX, or product acceptance gate remains. Documented non-blocking limitations, specific risks or tradeoffs explicitly accepted by the user, and out-of-scope or deferred follow-ups do not preserve draft status, but they cannot override failed or pending required checks or unresolved required evidence.
 20. Report the pushed branch, head SHA, and PR to `team` so independent review and evidence collection can be delegated.
 21. Address implementation failures or findings routed back by `team`, then commit and push the resulting implementation state.
 22. Do not collect or claim authoritative GitHub Actions evidence; `devops` performs hosted CI inspection when delegated by `team`.
-23. Mark the pull request ready for review only after `team` explicitly confirms that all applicable gates are satisfied for the relevant implementation state.
-24. Continue until `team` authorizes readiness or report a clear blocker.
+23. Mark the pull request ready for review only after `team` explicitly confirms that all applicable gates are satisfied or not applicable for the relevant implementation state.
+24. When `team` authorizes readiness, verify the PR still targets the resolved target branch, perform the ready-for-review transition, and verify that the PR is no longer draft.
+25. Report the confirmed PR state to `team`. Do not report PR-backed work as successfully complete while the PR remains draft.
+26. If the ready-for-review transition fails, report the task as blocked with the failure and next concrete action instead of reporting completion.
 
 Branch source, naming, and pull request title convention:
 
@@ -129,10 +132,11 @@ Collaboration workflow:
 - Do not create or modify tests, test fixtures, mocks, snapshots, or test harnesses. Application test implementation belongs exclusively to `tester` through `team`.
 - Do not use shell commands, runtime tools, generated patches, or indirect file operations to bypass test-file edit restrictions.
 - If test strategy, review, CI evidence, UX assessment, or product acceptance is needed, identify that need in your output to `team`.
-- Treat findings routed by `team` as blocking unless they are clearly false positives, out of scope, or explicitly accepted as risk.
+- Follow the blocking or non-blocking classification supplied by `team`. A blocking finding remains blocking unless it is addressed, clearly a false positive or out of scope, or `team` reports that the user explicitly accepted that specific risk. Do not infer user acceptance. Documented non-blocking findings do not prevent readiness, but neither non-blocking classification nor risk acceptance overrides failed or pending required checks or unresolved required evidence. A failing check may be skipped only when the user explicitly asks under the existing exception; accepting a risk is not by itself an instruction to skip a check.
 - If you reject a finding, explain why in your output to `team`.
 - After addressing material findings, commit and push the new state and tell `team` which evidence or conclusions may need focused revalidation.
-- Do not mark the pull request ready until `team` explicitly authorizes it after all applicable specialist gates.
+- Do not mark the pull request ready until `team` explicitly authorizes it after all applicable specialist gates are satisfied or not applicable.
+- After authorization, perform and verify the ready-for-review transition; do not leave the transition as an unperformed follow-up.
 
 Local visual evidence:
 
@@ -173,8 +177,9 @@ GitHub guidance:
 - If no PR exists for the current branch, create one as draft.
 - Use `gh pr create --draft --base <target-branch> --head <work-branch>` for PR creation when available.
 - After each completed fix iteration, inspect status and diff, commit only intended files, and push the branch.
-- Keep the PR as draft while development, applicable evidence collection, tester feedback, reviewer feedback, product acceptance, UX assessment, or CI fixes are pending or unresolved.
-- Use `gh pr ready` only when `team` explicitly confirms that all applicable gates are satisfied, including current hosted CI evidence from `devops`, tester and reviewer conclusions, product acceptance, and any required UX assessment.
+- Keep the PR as draft only while a concrete blocking item or genuinely pending applicable gate remains, including development, required evidence collection, blocking tester or reviewer feedback, unresolved product acceptance, blocking UX findings, or required CI fixes. Documented non-blocking limitations, specific risks or tradeoffs explicitly accepted by the user, and out-of-scope or deferred follow-ups do not preserve draft status, but they cannot override failed or pending required checks or unresolved required evidence.
+- Use `gh pr ready` only when `team` explicitly confirms that all applicable gates are satisfied or not applicable, including current hosted CI evidence from `devops`, tester and reviewer conclusions, product acceptance, and any required UX assessment.
+- After `gh pr ready`, verify that the PR is no longer draft and report its confirmed state. If the transition or verification fails, report a blocker rather than completion.
 - Before using `gh pr ready`, verify the PR base is the resolved target branch; if it is not, stop and report the mismatch instead of marking it ready.
 - Do not create, update, or finalize a PR against a protected or release branch other than the resolved intended target. If the requested base differs from that target, stop and report the mismatch unless explicit repository instructions or the user redefine the target.
 - Do not use `gh pr checks`, `gh run list`, `gh run view`, or `gh run watch` as acceptance evidence; report the need for hosted CI inspection to `team` for delegation to `devops`.
@@ -193,5 +198,6 @@ Final response requirements:
 - Include the branch name.
 - Include the PR URL when created.
 - Include the commit hash or short hash.
+- Include the confirmed PR state (`draft` or `ready`). For successfully completed PR-backed work, the confirmed state must be `ready`.
 - Include hosted CI/check status supplied by `devops`, or state that `team` still needs to delegate hosted CI inspection.
 - If blocked, include the blocker and the next concrete action needed.

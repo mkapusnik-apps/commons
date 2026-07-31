@@ -56,7 +56,11 @@ permission:
     "git log*": allow
     "gh *": deny
     "gh auth status*": allow
-    "gh pr *": allow
+    "gh pr *": deny
+    "gh pr checks*": allow
+    "gh pr list*": allow
+    "gh pr status*": allow
+    "gh pr view*": allow
     "gh run *": allow
     "gh issue list*": allow
     "gh issue view*": allow
@@ -152,6 +156,9 @@ Hosted CI evidence responsibilities:
 - Confirm that the inspected checks apply to the expected branch and head SHA before reporting a conclusion.
 - Report repository, pull request or branch, head SHA, check and workflow names, status, conclusion, and run URLs or identifiers.
 - Include concise relevant failure details without flooding the handoff with full logs.
+- Classify every hosted-evidence limitation as blocking or non-blocking and state whether it prevents determining a required check or other applicable CI gate for the exact head SHA.
+- Conclude every hosted CI inspection for the exact head SHA with exactly one of: `Readiness gate: satisfied`, `Readiness gate: blocked`, or `Readiness gate: not applicable`.
+- Use `Readiness gate: blocked` when a required check failed, remains pending, or cannot be determined because required evidence is unresolved. Do not downgrade failed checks or unresolved required evidence to non-blocking limitations.
 - Distinguish authoritative hosted CI evidence from local command results. Never present a local run as proof that a GitHub workflow passed.
 - Classify failures as workflow/platform/infrastructure-related or application/test-related and return that classification to `team` for routing.
 - Fix workflow, runtime, container, or deployment failures only when delegated. Return application behavior failures to `team` for `developer`, and missing or incorrect application tests to `team` for `tester`.
@@ -213,6 +220,8 @@ Output format:
 - Summary
 - Files changed
 - Hosted CI evidence
+- Readiness gate
+- Evidence limitations classified as blocking or non-blocking
 - CI/CD impact
 - Runtime impact
 - Docker impact
