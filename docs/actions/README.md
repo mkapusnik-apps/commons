@@ -41,6 +41,8 @@ The default `GITHUB_TOKEN` is usually enough only for the current repository whe
 
 Release and floating-major tags must be published only after review and merge, and must point to the merged implementation that contains the documented action paths. Local workflows in this repository may use relative paths such as `./git-ref`.
 
+The repository's semantic-version publication and floating-major contract is defined in [semantic-releases.md](semantic-releases.md). Consumers may use a floating major such as `v1` for compatible updates or a full version such as `v1.0.0` when an immutable release is required.
+
 ## Historical context
 
 The earlier product note for the initial ref and workflow-state work remains in [git-ref-and-workflow-state.md](git-ref-and-workflow-state.md). The pages in this catalog are the consumer-facing contract documentation for the current actions.
