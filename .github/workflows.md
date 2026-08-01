@@ -96,12 +96,16 @@ release, pull-request, other-branch, and scheduled events do not trigger it.
 It needs only `contents: write` to create refs and GitHub releases and publishes
 no workflow artifact.
 
-The publisher compares the complete repository trees from the preceding
-successfully published immutable release to the pushed head. Classification is
-major before minor before patch. The bootstrap creates `v1.0.0`, fixed `v1.0`,
-floating `v1`, and a stable, non-draft `v1.0.0` GitHub release at the same
-canonical `master` revision before this automation is merged. Publication fails
-clearly if the successful immutable release or floating-major prerequisite is
+The publisher compares the complete repository trees from the latest completed
+immutable release in the pushed head's `master` history to the pushed head.
+Classification is major before minor before patch. The bootstrap creates
+`v1.0.0`, fixed `v1.0`, floating `v1`, and a stable, non-draft `v1.0.0` GitHub
+release at canonical `master` revision
+`1a26ddc0defdd944902e58f1e428548a4ceca90e` before this automation is merged.
+The first automated push is allowed to cross the resulting activation gap: its
+event `before` revision has no release and does not contain the publication
+workflow, so the publisher classifies from the latest completed ancestor.
+Publication fails clearly if that release or its floating-major prerequisite is
 missing or inconsistent. Later automatic publications do not move `v1.0`.
 
 Publication uses an immutable version tag, a draft release, and the applicable
@@ -111,18 +115,23 @@ Immutable tags are create-only. A floating tag moves only forward within its
 own major, so a new major does not move older floating tags.
 
 Runs do not use GitHub Actions concurrency groups because those groups can
-replace a pending run and do not guarantee FIFO ordering. Instead, each pushed
-revision waits for the exact preceding branch head to have a published immutable
-release. This predecessor barrier serializes closely spaced pushes. Concurrent
-retries for one revision converge on the same immutable tag and draft release.
-A later revision cannot publish until its predecessor's release is complete.
+replace a pending run and do not guarantee FIFO ordering. After activation,
+each pushed revision waits for the exact preceding branch head to have a
+published immutable release. This predecessor barrier serializes closely spaced
+pushes. Concurrent retries for one revision converge on the same immutable tag
+and draft release. A later revision cannot use an immutable tag with a missing
+or draft release as its predecessor and cannot publish until that earlier
+revision's release is complete.
 
 To retry, rerun the failed push workflow from GitHub Actions. Do not create tags
 or releases manually for that revision. The rerun reuses a matching immutable
-tag or draft release, refuses conflicts, recomputes the same version-controlled
-classification, and never moves an immutable tag. Logs and the job summary
-include the full revision, classification/publication outcome, and version when
-allocated. Common blocking failures are a missing prerequisite release, a
-missing or ambiguous declaration, an invalid registry, an immutable-tag
-conflict, an unrecognized floating tag, or a predecessor that did not finish
-within the wait period.
+tag and draft release, or safely creates whichever one is missing, refuses
+conflicts, recomputes the same version-controlled classification, and never
+moves an immutable tag. If the floating major already points to the revision,
+the rerun accepts it only when the same immutable tag and stable draft release
+form a consistent in-progress publication; it then publishes that draft as the
+same version. Logs and the job summary include the full revision,
+classification/publication outcome, and version when allocated. Common
+blocking failures are a missing prerequisite release, a missing or ambiguous
+declaration, an invalid registry, an immutable-tag conflict, an inconsistent
+floating tag, or a predecessor that did not finish within the wait period.

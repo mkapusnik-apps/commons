@@ -5,6 +5,7 @@ const fs = require('node:fs');
 
 const REGISTRY_PATH = '.github/semantic-release/actions.json';
 const DECLARATION_DIRECTORY = '.github/semantic-release/declarations/';
+const PUBLISH_WORKFLOW_PATH = '.github/workflows/publish-semantic-release.yml';
 const IMMUTABLE_TAG_PATTERN = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const ZERO_SHA_PATTERN = /^0+$/;
 
@@ -306,6 +307,23 @@ async function classifyApiRange(github, props, baseSha, headSha) {
   });
 }
 
+async function revisionRelation(github, props, baseSha, headSha) {
+  const comparison = await github.rest.repos.compareCommitsWithBasehead({
+    ...props,
+    basehead: `${baseSha}...${headSha}`,
+    per_page: 1,
+  });
+  return comparison.data.status;
+}
+
+async function latestPublishedAncestor(github, props, published, sha) {
+  for (const publication of [...published].reverse()) {
+    const status = await revisionRelation(github, props, publication.sha, sha);
+    if (status === 'ahead' || status === 'identical') return publication;
+  }
+  return null;
+}
+
 async function resolveObjectToCommit(github, props, object) {
   let current = object;
   for (let depth = 0; depth < 5; depth += 1) {
@@ -370,7 +388,21 @@ async function getRefOrNull(github, props, ref) {
   }
 }
 
-async function verifyCompletedRelease(github, props, state, publication) {
+function verifyInProgressRelease(state, publication) {
+  const immutable = state.immutable.find((item) => (
+    item.tag === publication.tag && item.sha === publication.sha
+  ));
+  if (!immutable) {
+    fail(`In-progress release ${publication.tag} has no matching immutable tag at ${publication.sha}`);
+  }
+
+  const release = state.releasesByTag.get(publication.tag);
+  if (!release || !release.draft || release.prerelease) {
+    fail(`In-progress release ${publication.tag} must have a stable draft GitHub release`);
+  }
+}
+
+async function verifyCompletedRelease(github, props, state, publication, allowedInProgress = null) {
   const release = state.releasesByTag.get(publication.tag);
   if (!release || release.draft || release.prerelease) {
     fail(`Release ${publication.tag} is not a published stable GitHub release`);
@@ -385,9 +417,20 @@ async function verifyCompletedRelease(github, props, state, publication) {
   const floating = await getRefOrNull(github, props, `tags/v${publication.major}`);
   if (!floating) fail(`Floating tag v${publication.major} is missing`);
   const floatingSha = await resolveObjectToCommit(github, props, floating.object);
-  if (floatingSha !== highestInMajor.sha) {
-    fail(`Floating tag v${publication.major} points to ${floatingSha}, expected latest published ${highestInMajor.tag} at ${highestInMajor.sha}`);
+  if (floatingSha === highestInMajor.sha) return;
+
+  if (
+    allowedInProgress
+    && highestInMajor.tag === publication.tag
+    && allowedInProgress.major === publication.major
+    && floatingSha === allowedInProgress.sha
+    && compareVersions(publication, allowedInProgress) < 0
+  ) {
+    verifyInProgressRelease(state, allowedInProgress);
+    return;
   }
+
+  fail(`Floating tag v${publication.major} points to ${floatingSha}, expected latest published ${highestInMajor.tag} at ${highestInMajor.sha}`);
 }
 
 function sleep(milliseconds) {
@@ -395,10 +438,16 @@ function sleep(milliseconds) {
 }
 
 async function awaitPredecessor(github, props, beforeSha, currentSha, core) {
+  const relation = await revisionRelation(github, props, beforeSha, currentSha);
+  if (relation !== 'ahead') {
+    fail(`Push range ${beforeSha}...${currentSha} must be forward-only; status is ${relation}`);
+  }
+  const beforeTree = await loadTree(github, props, beforeSha);
+  const crossesActivationGap = !beforeTree.has(PUBLISH_WORKFLOW_PATH);
   const attempts = 106;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const state = await loadReleaseState(github, props);
-    uniqueItem(
+    const currentImmutable = uniqueItem(
       state.immutable.filter((item) => item.sha === currentSha),
       `immutable tags for revision ${currentSha}`,
     );
@@ -412,17 +461,39 @@ async function awaitPredecessor(github, props, beforeSha, currentSha, core) {
       fail('No successful immutable release exists; create the prerequisite v1.0.0 release and v1 tag before enabling automatic publication');
     }
 
+    const incompleteForOtherRevision = state.immutable.find((item) => (
+      !state.published.some((published) => published.tag === item.tag)
+      && item.sha !== currentSha
+    ));
+
     const predecessor = uniqueItem(
       state.published.filter((item) => item.sha === beforeSha),
       `published immutable releases for predecessor ${beforeSha}`,
     );
-    const latest = state.published.at(-1);
     if (predecessor) {
-      if (predecessor.tag !== latest.tag) {
-        fail(`Predecessor ${beforeSha} is ${predecessor.tag}, but latest successful release is ${latest.tag} at ${latest.sha}; refusing an out-of-order publication`);
+      const latest = await latestPublishedAncestor(github, props, state.published, currentSha);
+      if (!latest || predecessor.tag !== latest.tag) {
+        const detail = latest ? `${latest.tag} at ${latest.sha}` : '(none)';
+        fail(`Predecessor ${beforeSha} is ${predecessor.tag}, but latest successful release in ${currentSha}'s history is ${detail}; refusing an out-of-order publication`);
       }
-      await verifyCompletedRelease(github, props, state, predecessor);
+      if (incompleteForOtherRevision) {
+        fail(`Incomplete immutable tag ${incompleteForOtherRevision.tag} belongs to ${incompleteForOtherRevision.sha}; refusing to allocate another version`);
+      }
+      await verifyCompletedRelease(github, props, state, predecessor, currentImmutable);
       return { state, predecessor };
+    }
+
+    if (crossesActivationGap) {
+      if (incompleteForOtherRevision) {
+        fail(`Incomplete immutable tag ${incompleteForOtherRevision.tag} belongs to ${incompleteForOtherRevision.sha}; refusing to cross the activation gap while another publication is incomplete`);
+      }
+      const latest = await latestPublishedAncestor(github, props, state.published, currentSha);
+      if (!latest) {
+        fail(`No successful immutable release is an ancestor of activation revision ${currentSha}`);
+      }
+      await verifyCompletedRelease(github, props, state, latest, currentImmutable);
+      core.info(`Revision ${currentSha} crosses the publication activation gap after ${beforeSha}; using ${latest.tag} at ${latest.sha}`);
+      return { state, predecessor: latest, activationGap: true };
     }
 
     if (attempt === attempts) {
@@ -495,7 +566,10 @@ async function setFloatingMajor(github, props, target, sha, state) {
   const current = await getRefOrNull(github, props, refName);
   if (!current) fail(`Floating tag ${name} conflicted and cannot be read`);
   const currentSha = await resolveObjectToCommit(github, props, current.object);
-  if (currentSha === sha) return;
+  if (currentSha === sha) {
+    verifyInProgressRelease(state, target);
+    return;
+  }
 
   const currentPublication = uniqueItem(
     state.published.filter((item) => item.major === target.major && item.sha === currentSha),
@@ -539,13 +613,6 @@ async function publish({ github, context, core }) {
       gate.state.immutable.filter((item) => item.sha === sha),
       `immutable tags for revision ${sha}`,
     );
-    const incompleteForOtherRevision = gate.state.immutable.find((item) => (
-      !gate.state.published.some((published) => published.tag === item.tag)
-      && item.sha !== sha
-    ));
-    if (incompleteForOtherRevision) {
-      fail(`Incomplete immutable tag ${incompleteForOtherRevision.tag} belongs to ${incompleteForOtherRevision.sha}; refusing to allocate another version`);
-    }
     const classification = await classifyApiRange(github, props, gate.predecessor.sha, sha);
     const allocated = nextVersion(gate.predecessor, classification.outcome);
     const tag = formatVersion(allocated);
@@ -560,15 +627,18 @@ async function publish({ github, context, core }) {
     core.info(`${outcomePrefix} outcome=${classification.outcome} version=${tag} declarations=${classification.declarationPaths.join(',')} actions=${classification.affectedActions.join(',') || 'none'}`);
     await createImmutableRef(github, props, tag, sha);
     const stateAfterTag = await loadReleaseState(github, props);
-    const draft = await ensureDraftRelease(github, props, stateAfterTag, tag, sha);
-    if (!draft.draft) {
-      const refreshed = await loadReleaseState(github, props);
-      await verifyCompletedRelease(github, props, refreshed, target);
+    await ensureDraftRelease(github, props, stateAfterTag, tag, sha);
+    const stateWithRelease = await loadReleaseState(github, props);
+    const release = stateWithRelease.releasesByTag.get(tag);
+    if (!release) fail(`Release ${tag} was not readable after ensuring its draft`);
+    if (!release.draft) {
+      await verifyCompletedRelease(github, props, stateWithRelease, target);
       core.info(`${outcomePrefix} outcome=already-complete version=${tag}`);
       return;
     }
 
-    await setFloatingMajor(github, props, target, sha, stateAfterTag);
+    verifyInProgressRelease(stateWithRelease, target);
+    await setFloatingMajor(github, props, target, sha, stateWithRelease);
     const immutableRef = await getRefOrNull(github, props, `tags/${tag}`);
     const floatingRef = await getRefOrNull(github, props, `tags/v${target.major}`);
     if (!immutableRef || await resolveObjectToCommit(github, props, immutableRef.object) !== sha) {
@@ -580,14 +650,24 @@ async function publish({ github, context, core }) {
 
     await github.rest.repos.updateRelease({
       ...props,
-      release_id: draft.id,
+      release_id: release.id,
       tag_name: tag,
       target_commitish: sha,
       name: tag,
-      body: draft.body || `Automatic release of ${sha}.`,
+      body: release.body || `Automatic release of ${sha}.`,
       draft: false,
       prerelease: false,
     });
+
+    const completedState = await loadReleaseState(github, props);
+    const completed = uniqueItem(
+      completedState.published.filter((item) => item.sha === sha),
+      `published immutable releases for revision ${sha}`,
+    );
+    if (!completed || completed.tag !== tag) {
+      fail(`Release ${tag} did not verify as published for ${sha}`);
+    }
+    await verifyCompletedRelease(github, props, completedState, completed);
 
     core.info(`${outcomePrefix} outcome=published version=${tag}`);
     await core.summary

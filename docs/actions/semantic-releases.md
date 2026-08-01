@@ -11,11 +11,13 @@ Consumers of the shared actions need immutable versions for reproducibility and 
 - Tag events, release events, pushes to other branches, and manual scheduling do not create another publication.
 - Reprocessing the same pushed head revision resumes or confirms its existing publication; it does not allocate another version.
 - Closely spaced qualifying pushes are published in order. A later push must not overtake an earlier unpublished push.
-- Classification covers all repository changes since the preceding successfully published immutable version. This ensures that a previous failed publication cannot cause changes to be omitted.
+- Classification covers all repository changes since the latest completed immutable release in the pushed revision's `master` history. It does not require the push event's exact previous revision to have its own release. This ensures that activation gaps and previous failed publications cannot cause changes to be omitted.
 
 ## Initial stable bootstrap
 
-Immediately before the issue #28 release automation is merged, capture the full commit SHA at canonical `refs/heads/master`. Create `v1`, `v1.0`, and `v1.0.0` at exactly that revision, then publish a stable, non-draft GitHub release for `v1.0.0` at the same revision. This bootstrap identifies the existing reviewed shared-action implementation; it does not claim that the issue #28 automation is active at the bootstrap revision.
+The activation baseline is canonical `master` commit `1a26ddc0defdd944902e58f1e428548a4ceca90e`. Create `v1`, `v1.0`, and `v1.0.0` at exactly that revision, then publish a stable, non-draft GitHub release for `v1.0.0` at the same revision before enabling the automation. This bootstrap identifies the existing reviewed shared-action implementation; it does not claim that the issue #28 automation is active at the bootstrap revision.
+
+The first automated publication uses this completed baseline even when commits between the baseline and the first qualifying pushed head have no immutable release. It publishes the pushed head once and classifies the complete baseline-to-head change set.
 
 The three initial references have distinct compatibility contracts:
 
@@ -63,7 +65,9 @@ The fixed bootstrap reference `v1.0` is not part of later automatic publications
 ## Retry, conflict, and failure behavior
 
 - Retrying the same revision is idempotent, including after only part of its publication completed.
-- Existing publication resources for that revision are reused or completed where safe.
+- Existing publication resources for that revision are reused or completed where safe, without allocating a later version.
+- A retry resumes the same version when the immutable tag or floating major tag already moved to the revision but the GitHub release was not published. It completes the missing release instead of treating that partial version as the predecessor for a new allocation.
+- A partial publication is not a completed predecessor for any later revision. Later qualifying revisions remain blocked until the earlier publication is completed or its conflict is resolved.
 - If an expected immutable version already identifies a different revision, publication fails as a conflict and does not move that tag.
 - A run must not report successful publication while the immutable tag, release, and applicable floating tag are inconsistent.
 - Failures identify the affected revision and publication outcome clearly enough for a retry; a retry must not silently change the previously determined classification.
@@ -83,14 +87,16 @@ The fixed bootstrap reference `v1.0` is not part of later automatic publications
 - **HP-28-AC-03:** From `vX.Y.Z`, non-API changes affecting at least two distinct published action directories produce `vX.(Y+1).0`.
 - **HP-28-AC-04:** From `vX.Y.Z`, a non-API change affecting exactly one published action directory produces `vX.Y.(Z+1)`.
 - **HP-28-AC-05:** From `vX.Y.Z`, a change affecting no published action directory produces `vX.Y.(Z+1)`.
-- **HP-28-AC-06:** Classification considers the complete change set since the preceding successful immutable publication and follows major-before-minor-before-patch precedence.
+- **HP-28-AC-06:** Classification considers the complete change set since the latest completed immutable release in the pushed head's `master` history and follows major-before-minor-before-patch precedence; the event's exact previous revision need not have a release.
 - **HP-28-AC-07:** A completed publication's immutable tag, GitHub release, and applicable floating major tag all identify the pushed head revision.
 - **HP-28-AC-08:** Existing immutable tags never move, and publishing a new major does not move floating tags for earlier majors.
-- **HP-28-AC-09:** Reprocessing a revision, including after a partial failure, completes or confirms the same version without creating another version or changing its classification.
+- **HP-28-AC-09:** Reprocessing a revision, including after a partial failure, completes or confirms the same version without creating another version or changing its classification. This includes a failure after the floating major tag moved but before the GitHub release was published.
 - **HP-28-AC-10:** Closely spaced qualifying pushes publish in order without duplicate, skipped, reversed, or conflicting versions.
 - **HP-28-AC-11:** API-change and affected-action classification are deterministic and version-controlled; absent, invalid, or ambiguous required classification blocks publication.
 - **HP-28-AC-12:** Publication failures visibly identify the affected revision and failed outcome, do not report an inconsistent publication as successful, and allow a safe retry.
 - **HP-28-AC-13:** Contributor documentation explains the qualifying event, version precedence, public API boundary, affected-action counting, declaration requirement, and retry behavior.
-- **HP-28-AC-14:** The bootstrap creates `v1`, `v1.0`, and `v1.0.0` at the same full canonical `refs/heads/master` SHA captured immediately before bootstrap and before the issue #28 automation is merged.
+- **HP-28-AC-14:** Before automation is enabled, the bootstrap creates `v1`, `v1.0`, and `v1.0.0` at canonical `master` SHA `1a26ddc0defdd944902e58f1e428548a4ceca90e`.
 - **HP-28-AC-15:** `v1.0.0` is immutable, `v1.0` remains fixed at the initial stable release, and only `v1` moves forward to later compatible v1 publications.
 - **HP-28-AC-16:** The bootstrap publishes a stable, non-draft GitHub release for `v1.0.0` whose tag identifies the captured canonical `master` SHA.
+- **HP-28-AC-17:** When unreleased commits exist between the bootstrap and the first qualifying pushed head, the first automated publication succeeds from the bootstrap baseline and publishes one correctly classified version for that head.
+- **HP-28-AC-18:** A partial publication is never used as the predecessor of a later pushed revision; sequential and concurrent pushes wait for each earlier publication to complete rather than absorbing, skipping, or reversing it.
