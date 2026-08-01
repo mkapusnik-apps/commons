@@ -8,6 +8,8 @@ const DECLARATION_DIRECTORY = '.github/semantic-release/declarations/';
 const PUBLISH_WORKFLOW_PATH = '.github/workflows/publish-semantic-release.yml';
 const IMMUTABLE_TAG_PATTERN = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const ZERO_SHA_PATTERN = /^0+$/;
+const RELEASE_STATE_VERIFICATION_ATTEMPTS = 6;
+const RELEASE_STATE_VERIFICATION_DELAY_MS = 2000;
 
 function fail(message) {
   throw new Error(message);
@@ -437,6 +439,17 @@ function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+async function awaitReleaseState(github, props, predicate, failureMessage) {
+  for (let attempt = 1; attempt <= RELEASE_STATE_VERIFICATION_ATTEMPTS; attempt += 1) {
+    const state = await loadReleaseState(github, props);
+    if (predicate(state)) return state;
+    if (attempt < RELEASE_STATE_VERIFICATION_ATTEMPTS) {
+      await sleep(RELEASE_STATE_VERIFICATION_DELAY_MS);
+    }
+  }
+  fail(failureMessage);
+}
+
 async function awaitPredecessor(github, props, beforeSha, currentSha, core) {
   const relation = await revisionRelation(github, props, beforeSha, currentSha);
   if (relation !== 'ahead') {
@@ -543,10 +556,13 @@ async function ensureDraftRelease(github, props, state, tag, sha) {
     })).data;
   } catch (error) {
     if (error.status !== 422) throw error;
-    const refreshed = await loadReleaseState(github, props);
-    const conflicted = refreshed.releasesByTag.get(tag);
-    if (!conflicted) fail(`Creation of draft release ${tag} conflicted, but no release can be read`);
-    return conflicted;
+    const refreshed = await awaitReleaseState(
+      github,
+      props,
+      (candidate) => candidate.releasesByTag.has(tag),
+      `Creation of draft release ${tag} conflicted, but no release can be read`,
+    );
+    return refreshed.releasesByTag.get(tag);
   }
 }
 
@@ -628,9 +644,13 @@ async function publish({ github, context, core }) {
     await createImmutableRef(github, props, tag, sha);
     const stateAfterTag = await loadReleaseState(github, props);
     await ensureDraftRelease(github, props, stateAfterTag, tag, sha);
-    const stateWithRelease = await loadReleaseState(github, props);
+    const stateWithRelease = await awaitReleaseState(
+      github,
+      props,
+      (state) => state.releasesByTag.has(tag),
+      `Release ${tag} was not readable after ensuring its draft`,
+    );
     const release = stateWithRelease.releasesByTag.get(tag);
-    if (!release) fail(`Release ${tag} was not readable after ensuring its draft`);
     if (!release.draft) {
       await verifyCompletedRelease(github, props, stateWithRelease, target);
       core.info(`${outcomePrefix} outcome=already-complete version=${tag}`);
@@ -659,7 +679,12 @@ async function publish({ github, context, core }) {
       prerelease: false,
     });
 
-    const completedState = await loadReleaseState(github, props);
+    const completedState = await awaitReleaseState(
+      github,
+      props,
+      (state) => state.published.some((item) => item.tag === tag && item.sha === sha),
+      `Release ${tag} did not verify as published for ${sha}`,
+    );
     const completed = uniqueItem(
       completedState.published.filter((item) => item.sha === sha),
       `published immutable releases for revision ${sha}`,
