@@ -11,8 +11,8 @@ const ZERO_SHA_PATTERN = /^0+$/;
 const RELEASE_STATE_VERIFICATION_ATTEMPTS = 6;
 const RELEASE_STATE_VERIFICATION_DELAY_MS = 2000;
 
-function fail(message) {
-  throw new Error(message);
+function fail(message, cause = null) {
+  throw new Error(message, cause ? { cause } : undefined);
 }
 
 function parseJson(path, content) {
@@ -439,7 +439,7 @@ function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-async function awaitReleaseState(github, props, predicate, failureMessage) {
+async function awaitReleaseState(github, props, predicate, failureMessage, failureCause = null) {
   for (let attempt = 1; attempt <= RELEASE_STATE_VERIFICATION_ATTEMPTS; attempt += 1) {
     const state = await loadReleaseState(github, props);
     if (predicate(state)) return state;
@@ -447,7 +447,13 @@ async function awaitReleaseState(github, props, predicate, failureMessage) {
       await sleep(RELEASE_STATE_VERIFICATION_DELAY_MS);
     }
   }
-  fail(failureMessage);
+  fail(failureMessage, failureCause);
+}
+
+function githubApiErrorDetail(error) {
+  const status = error.status || error.response?.status;
+  const message = error.message || error.response?.data?.message || 'unknown error';
+  return `${status ? `HTTP ${status}: ` : ''}${message}`;
 }
 
 async function awaitPredecessor(github, props, beforeSha, currentSha, core) {
@@ -541,11 +547,11 @@ async function ensureDraftRelease(github, props, state, tag, sha) {
   const existing = state.releasesByTag.get(tag);
   if (existing) {
     if (existing.prerelease) fail(`Existing release ${tag} is unexpectedly a prerelease`);
-    return existing;
+    return null;
   }
 
   try {
-    return (await github.rest.repos.createRelease({
+    await github.rest.repos.createRelease({
       ...props,
       tag_name: tag,
       target_commitish: sha,
@@ -553,16 +559,11 @@ async function ensureDraftRelease(github, props, state, tag, sha) {
       body: `Automatic release of ${sha}.`,
       draft: true,
       prerelease: false,
-    })).data;
+    });
+    return null;
   } catch (error) {
     if (error.status !== 422) throw error;
-    const refreshed = await awaitReleaseState(
-      github,
-      props,
-      (candidate) => candidate.releasesByTag.has(tag),
-      `Creation of draft release ${tag} conflicted, but no release can be read`,
-    );
-    return refreshed.releasesByTag.get(tag);
+    return error;
   }
 }
 
@@ -643,12 +644,16 @@ async function publish({ github, context, core }) {
     core.info(`${outcomePrefix} outcome=${classification.outcome} version=${tag} declarations=${classification.declarationPaths.join(',')} actions=${classification.affectedActions.join(',') || 'none'}`);
     await createImmutableRef(github, props, tag, sha);
     const stateAfterTag = await loadReleaseState(github, props);
-    await ensureDraftRelease(github, props, stateAfterTag, tag, sha);
+    const draftCreationError = await ensureDraftRelease(github, props, stateAfterTag, tag, sha);
+    const draftVerificationFailure = draftCreationError
+      ? `Release ${tag} was not readable after createRelease returned ${githubApiErrorDetail(draftCreationError)}`
+      : `Release ${tag} was not readable after ensuring its draft`;
     const stateWithRelease = await awaitReleaseState(
       github,
       props,
       (state) => state.releasesByTag.has(tag),
-      `Release ${tag} was not readable after ensuring its draft`,
+      draftVerificationFailure,
+      draftCreationError,
     );
     const release = stateWithRelease.releasesByTag.get(tag);
     if (!release.draft) {
