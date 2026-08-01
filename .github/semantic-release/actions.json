@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "actionDirectories": [
+    "git-ref",
+    "pull-request",
+    "setup-flutter",
+    "tag",
+    "tag-gate",
+    "workflow-state"
+  ]
+}
