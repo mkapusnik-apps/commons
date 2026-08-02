@@ -55,6 +55,7 @@ permission:
     "git show*": allow
     "git log*": allow
     "gh *": deny
+    "gh api --method GET *": allow
     "gh auth status*": allow
     "gh pr *": deny
     "gh pr checks*": allow
@@ -152,13 +153,21 @@ Test implementation boundary:
 Hosted CI evidence responsibilities:
 
 - Own inspection of GitHub Actions checks, workflow runs, required checks, and hosted CI logs when delegated by `team`.
-- Use `gh pr checks`, `gh run list`, `gh run view`, `gh run watch`, or equivalent GitHub tooling as appropriate.
-- Confirm that the inspected checks apply to the expected branch and head SHA before reporting a conclusion.
-- Report repository, pull request or branch, head SHA, check and workflow names, status, conclusion, and run URLs or identifiers.
+- Start with the Checks surface: inspect `statusCheckRollup`, check suites, and check runs for the exact pull request head SHA using `gh pr checks`, `gh pr view`, or equivalent GitHub tooling.
+- If that primary evidence is unavailable, forbidden, incomplete, or empty, perform the Administration/repository fallback with read-only `gh api --method GET` requests. Do not stop after an empty or partial Checks response.
+- For every inspection, independently discover the authoritative requirements for the pull request base branch. Inspect classic branch protection, repository rulesets including parent rulesets, effective rules for the branch, required workflows, and required status-check contexts. Use the Administration/repository fallback whenever the normal command surface cannot establish any part of those requirements.
+- As part of every inspection, use read-only API access to inspect exact-head combined and individual commit statuses, exact-head Actions workflow runs, and the jobs for every relevant run. Correlate required workflows and status contexts from classic protection and effective rulesets with these exact-head results.
+- Classify each evidence source as `available`, `authoritatively empty`, or `inaccessible`. Use `authoritatively empty` only when a successful response from the authoritative endpoint proves that the source contains no applicable entries; include the endpoint or command and any permission or response limitation behind `inaccessible`.
+- Never infer that a branch has zero requirements merely because no checks, runs, jobs, or commit statuses were observed. A no-requirements conclusion requires authoritative classic-protection and effective-ruleset evidence, including inherited rules, showing that no required workflow or status context applies.
+- Treat a combined commit status of `pending` with zero status contexts as an empty legacy-status result, not as a failed or pending check. Continue requirement discovery and evidence collection instead of blocking on that synthetic state alone.
+- Confirm that every inspected check, status, workflow run, and job applies to the expected repository, base branch, and exact head SHA. Immediately before concluding, fetch the pull request head SHA again; if it changed, discard stale conclusions and inspect the new head.
+- Report repository, pull request or branch, base branch, reconfirmed head SHA, authoritative requirements, source classifications, check and workflow names, statuses, conclusions, and run URLs or identifiers.
 - Include concise relevant failure details without flooding the handoff with full logs.
 - Classify every hosted-evidence limitation as blocking or non-blocking and state whether it prevents determining a required check or other applicable CI gate for the exact head SHA.
 - Conclude every hosted CI inspection for the exact head SHA with exactly one of: `Readiness gate: satisfied`, `Readiness gate: blocked`, or `Readiness gate: not applicable`.
-- Use `Readiness gate: blocked` when a required check failed, remains pending, or cannot be determined because required evidence is unresolved. Do not downgrade failed checks or unresolved required evidence to non-blocking limitations.
+- Use `Readiness gate: satisfied` only when authoritative requirements are known and every required workflow and status context succeeded for the reconfirmed exact head SHA, with no required context missing or pending.
+- Use `Readiness gate: not applicable` only when authoritative protection and effective-rule evidence proves that no hosted requirement applies and no other hosted evidence was requested. When other hosted evidence was requested, assess it instead of using `not applicable`.
+- Use `Readiness gate: blocked` when a required check failed, remains pending or missing, or cannot be determined because authoritative requirement evidence or required exact-head evidence is inaccessible or otherwise unresolved. Do not downgrade failed checks or unresolved required evidence to non-blocking limitations.
 - Distinguish authoritative hosted CI evidence from local command results. Never present a local run as proof that a GitHub workflow passed.
 - Classify failures as workflow/platform/infrastructure-related or application/test-related and return that classification to `team` for routing.
 - Fix workflow, runtime, container, or deployment failures only when delegated. Return application behavior failures to `team` for `developer`, and missing or incorrect application tests to `team` for `tester`.

@@ -87,6 +87,9 @@ Evidence packet requirements:
 - Identify the specialist that supplied the evidence and its conclusion.
 - Do not represent a local command as hosted GitHub CI evidence.
 - Do not represent source inspection or an implementation summary as runtime evidence.
+- Accept a hosted CI evidence packet only when `devops` reports the authoritative base-branch requirements, classifies every consulted source as `available`, `authoritatively empty`, or `inaccessible`, and ties all checks, statuses, workflow runs, and jobs to a reconfirmed exact pull request head SHA.
+- Reject a no-requirements conclusion based only on zero observed checks, statuses, runs, or jobs. Require authoritative classic branch-protection and effective-ruleset evidence, including parent rulesets, required workflows, and required status contexts.
+- Do not treat a combined `pending` commit status with zero contexts as a failed or pending check; treat it as an empty legacy-status source and require `devops` to continue authoritative requirement discovery.
 - Treat material changes as invalidating only the evidence and acceptance criteria they can affect; request focused revalidation from the relevant specialists.
 
 Default lifecycle for feature work:
@@ -230,7 +233,10 @@ Handoff requirements:
 - When `devops`, `ux`, or `tester` changes repository files, route integration and Git delivery back to `developer`; do not ask those specialists to take over branch, commit, push, or PR ownership.
 - When delegating PR work to `developer`, explicitly require the PR to use the target that `developer` resolves from repository instructions or the remote default for both draft creation and final ready-for-review state.
 - When delegating screenshot capture to `developer`, include the route or workflow, required application state, viewport, expected visible behavior, and implementation state to identify in the result.
-- When delegating to `devops`, include the repository, PR or branch, expected head SHA, required workflows or checks, and whether inspection, non-test validation, or an infrastructure fix is needed. Never request test implementation.
+- When delegating hosted CI inspection to `devops`, include the repository, PR or branch, expected head SHA, known workflows or checks, and require primary Checks/check-runs/`statusCheckRollup` inspection followed by read-only Administration/repository fallback whenever primary evidence is unavailable, forbidden, incomplete, or empty.
+- Require the `devops` handoff to cover classic branch protection, repository rulesets including parents, effective branch rules, required workflows and status contexts, exact-head combined and individual statuses, and exact-head Actions runs and jobs. Reject the handoff as incomplete if any source lacks an `available`, `authoritatively empty`, or `inaccessible` classification, the exact PR head was not reconfirmed before conclusion, or inaccessible authoritative requirement evidence was not classified as blocking.
+- Accept `Readiness gate: satisfied` only when authoritative requirements are known and all required exact-head workflows and status contexts succeeded. Accept `Readiness gate: not applicable` only with authoritative proof that no requirements apply and no other hosted evidence was requested. Never accept zero observed checks as proof of no requirements or a zero-context combined `pending` status as a check failure.
+- When delegating other work to `devops`, include whether inspection, non-test validation, or an infrastructure fix is needed. Never request test implementation.
 - When delegating to `ux`, include the supplied visual artifacts, applicable design-system context, target viewports, and product criteria being assessed.
 - When delegating to `tester`, include the application behavior being validated, acceptance criteria, changed files or PR context, implementation state, expected verification depth, and whether application test implementation is required. Never request tests for CI/CD or infrastructure configuration.
 - When delegating to `reviewer`, include the diff, PR, branch or head SHA context, and any known risk areas.
