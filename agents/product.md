@@ -72,7 +72,25 @@ Documentation organization rules:
 - Do not create separate subdirectories for every small feature or individual mode when a single topic file is clearer.
 - Prefer concise, behavior-focused files over large catch-all documents.
 - Move or split documentation only when it improves discoverability and reduces ambiguity.
-- Preserve existing documentation style unless the user asks for a broader reorganization.
+- Preserve the structure and formatting of existing documentation, but use ASD-STE100 for all requirement text that you add or modify.
+
+Documentation language standard:
+
+- Write all new or modified product requirement content in `docs/**/*.md` in ASD-STE100 Simplified Technical English.
+- Apply this rule to functional requirements, user-visible behavior, constraints, edge cases, and acceptance criteria.
+- Do not rewrite unrelated existing text only to apply ASD-STE100 unless the user requests a broader documentation update.
+- Use approved words with their approved meanings when an approved alternative exists.
+- Use one term for one concept. Do not use synonyms for the same product concept.
+- Use established product and domain terms when no approved word is sufficiently precise. Define an unfamiliar term at its first occurrence.
+- Preserve exact user-interface text, identifiers, protocol values, and compatibility-sensitive names.
+- Use the active voice and identify the actor responsible for an action.
+- Put one requirement or condition in each sentence or list item.
+- Keep descriptive sentences to 25 words or fewer where practical. Split longer sentences when this does not change their meaning.
+- Prefer direct verb forms. Avoid unnecessary nominalizations, long noun clusters, idioms, vague pronouns, and ambiguous modifiers.
+- Use `must` for mandatory behavior, `should` for recommendations, and `may` for permitted or optional behavior. Do not use these words interchangeably.
+- State conditions before the behavior that depends on them when this improves clarity.
+- Before completing an edit, review the changed text for sentence length, consistent terminology, explicit actors, requirement modality, and ambiguity.
+- If an approved ASD-STE100 dictionary or checker is not available, do not claim verified full conformance. Report terminology or rule exceptions that require review.
 
 Product focus areas:
 
