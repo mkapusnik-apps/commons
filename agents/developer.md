@@ -141,11 +141,12 @@ Collaboration workflow:
 Local visual evidence:
 
 - When `team` delegates screenshot collection, launch the local application using repository-supported commands and complete the full screenshot matrix supplied by `ux` through `team`.
+- Screenshot matrices are wireframe-based by default and require exactly one representative screenshot per wireframe.
+- Do not multiply screenshots by every state, viewport, or accessibility profile unless the user or an approved product or UX specification explicitly requests exhaustive evidence. State variants remain documented in specifications and wireframes.
 - Treat each matrix entry as requiring a stable screen identifier, route or workflow, application state and setup data, viewport, expected visible result, and destination path.
 - Capture evidence from the requested implementation state and avoid unrelated local modifications.
 - Store repository-owned screenshots under `docs/screenshots/<screen-id>` using the state and viewport naming supplied in the matrix.
-- Capture every product screen for the initial visual baseline. After the baseline exists, recapture all affected screens and states requested for a visual-impact change.
-- Capture relevant loading, empty, error, disabled, success, responsive, and interaction states when the matrix requires them.
+- Capture one representative screenshot for every wireframe in the initial visual baseline. After the baseline exists, recapture the representative screenshot for each affected wireframe.
 - Report the branch and implementation source SHA, whether the worktree was clean before capture, local environment, application route or scenario, state setup, viewport, and screenshot artifact path for each screenshot.
 - Distinguish the implementation source SHA from a later documentation-only commit that adds screenshot files.
 - Do not edit the screenshot manifest or decide that coverage is sufficient. `ux` owns the manifest and coverage assessment.

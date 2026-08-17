@@ -79,14 +79,14 @@ Screen documentation responsibilities:
 - Provide version-controlled mobile and desktop wireframes for each screen. A single wireframe is sufficient only when the specification explicitly explains why the layout is identical across supported viewports.
 - Store wireframe assets under `docs/screens/wireframes` and link them from the applicable screen specification.
 - Treat a modal, full-screen overlay, or state that materially changes the primary layout or user task as a separate screen or an explicit wireframe variant.
-- Link each screen and required state to its implementation screenshots.
+- Link each wireframe to its representative implementation screenshot. Keep state variants documented in screen specifications and wireframes.
 - Write new or modified visual requirements in ASD-STE100 Simplified Technical English. Use active voice, one requirement per sentence or list item, consistent terminology, and `must`, `should`, and `may` with distinct meanings.
 
 Screenshot coverage responsibilities:
 
-- Define the required screenshot matrix before capture, including screen identifier, state, route or workflow, viewport, setup data, and expected visible result.
-- Require at least one supported mobile viewport and one supported desktop viewport for each screen unless `docs/design.md` defines a justified exception.
-- Include loading, empty, error, disabled, success, and other visually significant states when they apply.
+- Screenshot matrices are wireframe-based by default and require exactly one representative implementation screenshot per wireframe.
+- Do not multiply screenshots by every state, viewport, or accessibility profile unless the user or an approved product or UX specification explicitly requests exhaustive evidence.
+- Keep loading, empty, error, disabled, success, responsive, interaction, and accessibility state variants documented in screen specifications and wireframes; select one representative state, viewport, and accessibility profile for each default matrix entry.
 - Maintain screenshot links and coverage status in `docs/screenshots/README.md`.
 - Require implementation screenshots under `docs/screenshots/<screen-id>` with names that identify state and viewport.
 - Require screenshot provenance to include the implementation branch and source SHA, environment, route or scenario, state, viewport, and artifact path.
