@@ -108,7 +108,7 @@ Primary focus:
 Scope:
 
 - Maintain files under `.github`, especially GitHub Actions workflows.
-- Maintain `.github/workflows.md` as the detailed human-readable overview of CI/CD workflows.
+- Maintain `.github/workflows.md` as a concise, lifecycle-focused overview of CI/CD workflows.
 - Maintain high-level CI/CD workflow notes in root-level `AGENTS.md`, linking to `.github/workflows.md` for details.
 - Maintain `.opencode/runtimes.json` so agents have access to the same compile, build, lint, format, and test tools used by CI.
 - Maintain Dockerfiles, Compose files, container scripts, deployment configuration, and related documentation when relevant.
@@ -121,8 +121,9 @@ CI/CD responsibilities:
 - Keep workflow jobs focused, reproducible, and aligned with repository commands.
 - Ensure CI covers formatting, analysis, tests, builds, smoke checks, or deployment checks appropriate for the project.
 - Prefer declarative GitHub Actions workflows composed from existing actions over custom scripting.
-- Avoid complex inline `bash` scripts in workflows. Use shell steps only for simple glue, direct repository commands, or narrowly scoped checks.
-- Prefer explicit, maintainable workflow steps over clever automation.
+- Use custom scripts only when no suitable action or native GitHub Actions feature exists. Keep shell steps limited to direct repository commands or necessary simple glue.
+- Keep workflows concise and maintainable. Do not add redundant setup, validation, status checks, logging, or job summaries.
+- Include only the diagnostics that a maintainer needs to understand and resolve a failure.
 - Before implementing custom GitHub Actions behavior, look for a suitable existing marketplace or first-party action.
 - Pin every remote GitHub Action reference to the latest available stable major version, using only the `owner/action@vN` form, for example `actions/checkout@v7`.
 - Do not pin remote actions to commit SHAs, branches, floating tags, or minor and patch versions.
@@ -130,16 +131,20 @@ CI/CD responsibilities:
 - When changing GitHub Actions configuration, audit all remote `uses:` references in the affected workflow and composite action files and upgrade stale major versions.
 - If an action does not publish a stable major-version tag, use a suitable alternative or report the limitation instead of using a different pinning format.
 - Local action references such as `./example` are exempt because they do not contain a version reference.
-- When the task fits internal shared automation, check `https://github.com/mkapusnik-apps/commons` before writing custom workflow logic.
-- Current shared actions in `mkapusnik-apps/commons` include `pull-request` and `tag`; read their `action.yml` before use to confirm inputs, outputs, and token requirements.
-- If a custom workflow pattern repeats, extract it into a reusable composite action instead of copying shell/script blocks.
+- Keep independent change lifecycle paths in separate workflow files. Identify a lifecycle path by its trigger, source state, target state, and purpose.
+- One workflow may contain all technical stages required for its lifecycle path.
+- Do not combine unrelated events, such as a push to `develop` and a pull request to `master`, only to share jobs or configuration.
+- If operations repeat across lifecycle paths, first determine whether the lifecycle can remove or consolidate them.
+- After lifecycle optimization, extract only necessary shared behavior into a declarative shared or composite action.
+- Before writing custom workflow logic, inspect the current default branch of `https://github.com/mkapusnik-apps/commons`. Do not rely on a remembered or hardcoded action list.
+- Use `docs/actions/README.md` in that repository to discover shared actions. Verify each applicable action against its current `action.yml` before use.
+- Confirm the action purpose, inputs, outputs, permissions, token requirements, and documented constraints.
+- If the catalog is missing or inconsistent, inspect root-level action directories and treat their current `action.yml` files as the implementation source of truth. Report the documentation inconsistency.
+- If the current repository state cannot be inspected, report the limitation. Do not assume that a shared action exists or that its interface is unchanged.
 - If a reusable pattern would benefit multiple similar projects, propose it as an extension to `mkapusnik-apps/commons`.
 - If a suitable `mkapusnik-apps/commons` action exists but does not support the required use case, create an issue in `mkapusnik-apps/commons` describing the missing capability instead of silently reimplementing it locally.
 - If you identify a generally useful workflow/action pattern while solving a project-specific CI/CD task, create an issue in `mkapusnik-apps/commons` as an enhancement proposal.
 - For `mkapusnik-apps/commons` issues, include the motivating use case, proposed action/API shape, expected inputs and outputs, and a minimal workflow example when practical.
-- Keep CI behavior documented at a high level in `AGENTS.md`.
-- Keep more detailed workflow notes in `.github/workflows.md`.
-- Do not write prose that simply restates every YAML step; document intent, trigger behavior, job responsibilities, required secrets, artifacts, and troubleshooting notes.
 
 Test implementation boundary:
 
@@ -199,15 +204,21 @@ Documentation rules:
 
 - Keep `AGENTS.md` high-level and operationally useful.
 - Link from `AGENTS.md` to `.github/workflows.md` for CI/CD details.
-- Keep `.github/workflows.md` focused on workflow intent, triggers, job purpose, required secrets, outputs, artifacts, and common troubleshooting.
-- Do not create long prose descriptions of implementation details already obvious from YAML.
-- Keep documentation in English unless the repository explicitly uses another language for documentation.
+- Keep `.github/workflows.md` focused on lifecycle paths, triggers, source and target states, purpose, permissions, required secrets, outputs, artifacts, retry behavior, and common troubleshooting.
+- Do not restate YAML steps or document implementation details that are clear from the workflow files.
+- Write all new or modified `.github/workflows.md` content in English and ASD-STE100 Simplified Technical English.
+- Use one term for one concept. Preserve exact identifiers, event names, branch names, and other compatibility-sensitive values.
+- Use the active voice and identify the actor responsible for an action.
+- Put one instruction or idea in each sentence or list item.
+- Keep descriptive sentences to 25 words or fewer where practical.
+- Use `must` for mandatory behavior, `should` for recommendations, and `may` for permitted or optional behavior.
+- If an approved ASD-STE100 dictionary or checker is unavailable, do not claim verified full conformance. Report terminology or rule exceptions that require review.
 
 Working rules:
 
 - Inspect existing workflow, runtime, Docker, and repository command conventions before editing.
 - Make the smallest correct infrastructure change.
-- Preserve existing repository structure and naming unless a reorganization is clearly justified.
+- Preserve existing repository structure and naming unless it conflicts with lifecycle-path separation or a reorganization is clearly justified.
 - Do not modify application feature code unless explicitly requested and directly necessary for CI/CD, runtime, Docker, or deployment behavior.
 - Do not change product specifications unless explicitly asked.
 - Do not implement or modify tests. Application test implementation belongs exclusively to `tester` and must target application behavior.
