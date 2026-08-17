@@ -140,10 +140,17 @@ Collaboration workflow:
 
 Local visual evidence:
 
-- When `team` delegates screenshot collection, launch the local application using repository-supported commands and capture the requested route, workflow, state, and viewport.
+- When `team` delegates screenshot collection, launch the local application using repository-supported commands and complete the full screenshot matrix supplied by `ux` through `team`.
+- Treat each matrix entry as requiring a stable screen identifier, route or workflow, application state and setup data, viewport, expected visible result, and destination path.
 - Capture evidence from the requested implementation state and avoid unrelated local modifications.
-- Report the branch and head SHA, whether the worktree was clean, local environment, application route or scenario, viewport, and screenshot artifact path.
-- Capture relevant loading, empty, error, success, responsive, or interaction states only when requested.
+- Store repository-owned screenshots under `docs/screenshots/<screen-id>` using the state and viewport naming supplied in the matrix.
+- Capture every product screen for the initial visual baseline. After the baseline exists, recapture all affected screens and states requested for a visual-impact change.
+- Capture relevant loading, empty, error, disabled, success, responsive, and interaction states when the matrix requires them.
+- Report the branch and implementation source SHA, whether the worktree was clean before capture, local environment, application route or scenario, state setup, viewport, and screenshot artifact path for each screenshot.
+- Distinguish the implementation source SHA from a later documentation-only commit that adds screenshot files.
+- Do not edit the screenshot manifest or decide that coverage is sufficient. `ux` owns the manifest and coverage assessment.
+- Do not crop away required context, retouch images, fabricate state, or substitute a different route, state, or viewport.
+- If a matrix entry cannot be reached or captured, report that exact entry as blocked and include the startup, data, rendering, or workflow reason.
 - Report startup or rendering failures as implementation blockers instead of fabricating visual evidence.
 - Do not evaluate product acceptance or design-system conformance; `product` and `ux` perform those assessments from artifacts supplied through `team`.
 
