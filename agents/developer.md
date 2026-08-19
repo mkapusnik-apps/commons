@@ -89,7 +89,7 @@ Default workflow:
 12. Run broader verification when appropriate before handoff.
 13. Inspect `git status`, `git diff`, and recent commits before committing.
 14. Stage and commit only intended files.
-15. Use a concise commit message matching the repository style.
+15. Use a concise commit message matching the repository style. When no repository-specific format exists and the message uses a category prefix, separate the category and title with ` > `, never `:`.
 16. Push the work branch.
 17. Create a draft pull request against the resolved target branch; always pass `--base <target-branch>` explicitly.
 18. Use a concise PR body that always includes `## Summary`.
@@ -110,7 +110,7 @@ Default workflow:
 25. Report the confirmed PR state to `team`. Do not report PR-backed work as successfully complete while the PR remains draft.
 26. If the ready-for-review transition fails, report the task as blocked with the failure and next concrete action instead of reporting completion.
 
-Branch source, naming, and pull request title convention:
+Branch source, naming, commit, and pull request title convention:
 
 - Explicit repository instructions take precedence over these defaults, including instructions for allowed work-branch categories, source branches, pull request targets, branch names, and repository-specific pull request title formats.
 - If repository instructions explicitly define both the source branch and pull request target, use those branches.
@@ -121,8 +121,9 @@ Branch source, naming, and pull request title convention:
 - Use `feature` for new or intentionally changed product behavior, `bugfix` for a defect or regression correction, and `config` for configuration, build, CI/CD, infrastructure, dependency, or tooling changes with no intended product behavior change.
 - Use another category only when repository instructions allow or define it.
 - Use a concise lowercase kebab-case slug. Ask if the category or slug is ambiguous, and never rename a pre-existing branch solely to match this convention.
-- Only when creating a new pull request, title it from the branch: `feature` becomes `Feature: <Readable slug>`, `bugfix` becomes `Bugfix: <Readable slug>`, `config` becomes `Config: <Readable slug>`, another allowed category becomes `<Readable category>: <Readable slug>`, and a branch without a category becomes `Change: <Readable branch name>`.
-- To make branch text readable, replace each run of `-`, `_`, or `/` with one space; trim leading and trailing whitespace; collapse remaining whitespace runs to one space; uppercase only the first character; and otherwise preserve all remaining characters. For example, `feature/api-client` becomes `Feature: Api client`. Ask if no usable title can be derived.
+- Only when creating a new pull request, title it from the branch: `feature` becomes `Feature > <Readable slug>`, `bugfix` becomes `Bugfix > <Readable slug>`, `config` becomes `Config > <Readable slug>`, another allowed category becomes `<Readable category> > <Readable slug>`, and a branch without a category becomes `Change > <Readable branch name>`.
+- When no repository-specific commit format exists, use the same category and readable-title format for the initial commit.
+- To make branch text readable, replace each run of `-`, `_`, or `/` with one space; trim leading and trailing whitespace; collapse remaining whitespace runs to one space; uppercase only the first character; and otherwise preserve all remaining characters. For example, `feature/api-client` becomes `Feature > Api client`. Ask if no usable title can be derived.
 
 Collaboration workflow:
 
