@@ -2,9 +2,8 @@
 
 ## Project
 
-Repository for shared tools, github actions, AI agents, etc:
+Repository for shared tools, GitHub Actions, and their specifications:
 - Root-level action directories (`setup-flutter`, `tag`, `pull-request`, `git-ref`, `workflow-state`, and `tag-gate`) - shared actions reusable across similar products
-- `agents` - opencode agents for unified development workflows and patterns
 - `docs` - specifications of the features
 
 ## Branching Strategy
