@@ -1,0 +1,44 @@
+name: Validate GitHub Actions (Pull Request)
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - '*/action.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  yaml-syntax:
+    name: Validate action YAML syntax
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Require standalone action metadata
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          action_files=(*/action.yml)
+          if (( ${#action_files[@]} == 0 )); then
+            echo "::error::No files matched */action.yml"
+            exit 1
+          fi
+
+          for action_file in "${action_files[@]}"; do
+            if [[ ! -f "$action_file" ]]; then
+              echo "::error file=$action_file::Matched path is not a regular file"
+              exit 1
+            fi
+          done
+
+      - name: Validate YAML syntax
+        uses: GrantBirki/json-yaml-validate@v5
+        with:
+          files: '*/action.yml'
+          use_gitignore: 'false'
+          allow_multiple_documents: 'true'

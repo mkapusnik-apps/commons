@@ -1,0 +1,142 @@
+name: Create or Update Pull Request
+
+description: |
+  Create a pull request for a given head/base pair, or update the existing open one.
+  Useful for recurring promotion flows where the same PR should be reused.
+
+inputs:
+  head:
+    description: Head branch name or owner:branch reference
+    required: true
+  base:
+    description: Base branch name
+    required: true
+  title:
+    description: Pull request title
+    required: true
+  body:
+    description: Pull request body
+    required: false
+  auto_merge:
+    description: Enable pull request auto-merge
+    required: false
+    default: 'true'
+  merge_method:
+    description: Auto-merge strategy (merge or squash)
+    required: false
+    default: merge
+  token:
+    description: GitHub token used for PR operations.
+    required: true
+
+outputs:
+  pull_request_number:
+    description: Created or updated pull request number
+    value: ${{ steps.upsert.outputs.pull_request_number }}
+  pull_request_url:
+    description: Created or updated pull request URL
+    value: ${{ steps.upsert.outputs.pull_request_url }}
+
+runs:
+  using: composite
+  steps:
+    - id: upsert
+      name: Create or update pull request
+      uses: actions/github-script@v8
+      with:
+        github-token: ${{ inputs.token }}
+        script: |
+          const owner = context.repo.owner;
+          const repo = context.repo.repo;
+          const headInput = (process.env.PR_HEAD ?? '').trim();
+          const base = (process.env.PR_BASE ?? '').trim();
+          const title = (process.env.PR_TITLE ?? '').trim();
+          const body = process.env.PR_BODY ?? '';
+
+          if (!headInput) throw new Error('Input "head" must be a non-empty string');
+          if (!base) throw new Error('Input "base" must be a non-empty string');
+          if (!title) throw new Error('Input "title" must be a non-empty string');
+
+          const listHead = headInput.includes(':') ? headInput : `${owner}:${headInput}`;
+          const createHead = headInput.includes(':') ? headInput.split(':', 2)[1] : headInput;
+
+          const existing = await github.rest.pulls.list({
+            owner,
+            repo,
+            state: 'open',
+            base,
+            head: listHead,
+            per_page: 1,
+          });
+
+          if (existing.data.length > 0) {
+            const pullRequest = existing.data[0];
+            await github.rest.pulls.update({
+              owner,
+              repo,
+              pull_number: pullRequest.number,
+              title,
+              body,
+            });
+            core.setOutput('pull_request_number', pullRequest.number.toString());
+            core.setOutput('pull_request_url', pullRequest.html_url);
+            core.setOutput('pull_request_id', pullRequest.node_id);
+            core.info(`Updated existing PR #${pullRequest.number}`);
+          } else {
+            const created = await github.rest.pulls.create({
+              owner,
+              repo,
+              head: createHead,
+              base,
+              title,
+              body,
+            });
+            core.setOutput('pull_request_number', created.data.number.toString());
+            core.setOutput('pull_request_url', created.data.html_url);
+            core.setOutput('pull_request_id', created.data.node_id);
+            core.info(`Created PR #${created.data.number}`);
+          }
+      env:
+        PR_HEAD: ${{ inputs.head }}
+        PR_BASE: ${{ inputs.base }}
+        PR_TITLE: ${{ inputs.title }}
+        PR_BODY: ${{ inputs.body }}
+
+    - name: Enable auto-merge
+      if: ${{ inputs.auto_merge == 'true' }}
+      uses: actions/github-script@v8
+      with:
+        github-token: ${{ inputs.token }}
+        script: |
+          const pullRequestId = (process.env.PULL_REQUEST_ID ?? '').trim();
+          const methodInput = (process.env.MERGE_METHOD ?? '').trim().toLowerCase();
+          const methods = {
+            merge: 'MERGE',
+            squash: 'SQUASH',
+          };
+
+          const mergeMethod = methods[methodInput];
+          if (!mergeMethod) {
+            throw new Error(`Input \"merge_method\" must be one of: ${Object.keys(methods).join(', ')}`);
+          }
+
+          if (!pullRequestId) {
+            throw new Error('Missing pull request ID output from upsert step');
+          }
+
+          await github.graphql(
+            `mutation EnableAutoMerge($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
+              enablePullRequestAutoMerge(input: {
+                pullRequestId: $pullRequestId,
+                mergeMethod: $mergeMethod
+              }) {
+                clientMutationId
+              }
+            }`,
+            { pullRequestId, mergeMethod },
+          );
+
+          core.info(`Enabled auto-merge with ${methodInput} strategy`);
+      env:
+        PULL_REQUEST_ID: ${{ steps.upsert.outputs.pull_request_id }}
+        MERGE_METHOD: ${{ inputs.merge_method }}

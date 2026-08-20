@@ -1,0 +1,22 @@
+name: Setup Flutter for CI
+description: Install and configure the project-wide stable Flutter toolchain.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Flutter SDK
+      uses: subosito/flutter-action@v2
+      env:
+        PUB_CACHE: "${{ runner.temp }}/flutter-pub-cache"
+      with:
+        channel: stable
+        cache: true
+        pub-cache: true
+        cache-path: "${{ runner.temp }}/flutter-sdk/:channel:-:version:-:arch:"
+        pub-cache-path: "${{ runner.temp }}/flutter-pub-cache"
+
+    - name: Configure Flutter CLI for CI
+      shell: bash
+      run: |
+        git config --global --add safe.directory "$FLUTTER_ROOT"
+        flutter --suppress-analytics config --no-analytics --no-cli-animations

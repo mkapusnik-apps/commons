@@ -1,0 +1,128 @@
+name: Set Workflow State
+
+description: |
+  Enable or disable a GitHub Actions workflow by using the GitHub REST API.
+
+inputs:
+  workflow:
+    description: Workflow file name, .github/workflows path, or numeric workflow ID.
+    required: true
+  state:
+    description: Desired state. Supported aliases include enable, enabled, active, disable, disabled, and disabled_manually.
+    required: true
+  repository:
+    description: Target repository in owner/repo form. Defaults to the current workflow repository.
+    required: false
+    default: ${{ github.repository }}
+  token:
+    description: GitHub token authorized to enable or disable workflows in the target repository.
+    required: true
+
+outputs:
+  changed:
+    description: 'true when the workflow state changed; otherwise false.'
+    value: ${{ steps.set_state.outputs.changed }}
+  previous_state:
+    description: Workflow state before the action ran.
+    value: ${{ steps.set_state.outputs.previous_state }}
+  new_state:
+    description: Workflow state after a successful run.
+    value: ${{ steps.set_state.outputs.new_state }}
+  workflow_id:
+    description: Numeric workflow ID returned by GitHub.
+    value: ${{ steps.set_state.outputs.workflow_id }}
+  workflow_path:
+    description: Workflow path returned by GitHub.
+    value: ${{ steps.set_state.outputs.workflow_path }}
+
+runs:
+  using: composite
+  steps:
+    - id: set_state
+      name: Set workflow state
+      uses: actions/github-script@v8
+      with:
+        github-token: ${{ inputs.token }}
+        script: |
+          const repository = (process.env.WORKFLOW_STATE_REPOSITORY ?? '').trim();
+          const workflowInput = (process.env.WORKFLOW_STATE_WORKFLOW ?? '').trim();
+          const stateInput = (process.env.WORKFLOW_STATE_STATE ?? '').trim().toLowerCase().replace(/-/g, '_');
+          const token = (process.env.WORKFLOW_STATE_TOKEN ?? '').trim();
+
+          const describeError = (error) => {
+            const status = error.status ? `${error.status} ` : '';
+            const url = error.documentation_url ? ` (${error.documentation_url})` : '';
+            return `${status}${error.message}${url}`;
+          };
+
+          const validateRepository = (value) => {
+            const parts = value.split('/');
+            if (parts.length !== 2 || parts.some((part) => !part.trim())) {
+              throw new Error('Input "repository" must use owner/repo format');
+            }
+            return { owner: parts[0], repo: parts[1] };
+          };
+
+          const enabledAliases = new Set(['enable', 'enabled', 'active']);
+          const disabledAliases = new Set(['disable', 'disabled', 'disabled_manually']);
+
+          if (!repository) throw new Error('Input "repository" must be a non-empty string');
+          if (!workflowInput) throw new Error('Input "workflow" must be a non-empty string');
+          if (!stateInput) throw new Error('Input "state" must be a non-empty string');
+          if (!token) throw new Error('Input "token" must be a non-empty string');
+
+          let desiredEnabled;
+          if (enabledAliases.has(stateInput)) {
+            desiredEnabled = true;
+          } else if (disabledAliases.has(stateInput)) {
+            desiredEnabled = false;
+          } else {
+            throw new Error('Input "state" must be one of: enable, enabled, active, disable, disabled, disabled_manually');
+          }
+
+          const props = validateRepository(repository);
+          const normalizedWorkflow = workflowInput.replace(/^\.github\/workflows\//, '');
+          const workflowId = /^\d+$/.test(normalizedWorkflow) ? Number(normalizedWorkflow) : normalizedWorkflow;
+
+          let workflow;
+          try {
+            const response = await github.rest.actions.getWorkflow({ ...props, workflow_id: workflowId });
+            workflow = response.data;
+          } catch (error) {
+            throw new Error(`Failed to read workflow "${workflowInput}" in ${repository}: ${describeError(error)}`);
+          }
+
+          const previousState = workflow.state;
+          const currentlyEnabled = previousState === 'active';
+          const currentlyDisabled = previousState.startsWith('disabled');
+          const desiredState = desiredEnabled ? 'active' : 'disabled_manually';
+
+          core.setOutput('previous_state', previousState);
+          core.setOutput('workflow_id', workflow.id.toString());
+          core.setOutput('workflow_path', workflow.path);
+
+          if ((desiredEnabled && currentlyEnabled) || (!desiredEnabled && currentlyDisabled)) {
+            core.setOutput('changed', 'false');
+            core.setOutput('new_state', previousState);
+            core.info(`Workflow ${workflow.path} is already ${previousState}`);
+            return;
+          }
+
+          try {
+            if (desiredEnabled) {
+              await github.rest.actions.enableWorkflow({ ...props, workflow_id: workflow.id });
+            } else {
+              await github.rest.actions.disableWorkflow({ ...props, workflow_id: workflow.id });
+            }
+          } catch (error) {
+            throw new Error(`Failed to set workflow ${workflow.path} to ${desiredState} in ${repository}: ${describeError(error)}`);
+          }
+
+          core.setOutput('changed', 'true');
+          core.setOutput('new_state', desiredState);
+          core.info(`Set workflow ${workflow.path} from ${previousState} to ${desiredState}`);
+      env:
+        WORKFLOW_STATE_REPOSITORY: ${{ inputs.repository || github.repository }}
+        WORKFLOW_STATE_WORKFLOW: ${{ inputs.workflow }}
+        WORKFLOW_STATE_STATE: ${{ inputs.state }}
+        WORKFLOW_STATE_TOKEN: ${{ inputs.token }}

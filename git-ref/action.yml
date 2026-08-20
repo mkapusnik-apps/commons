@@ -1,0 +1,188 @@
+name: Set Git Ref
+
+description: |
+  Create or update a full Git ref, such as refs/tags/nightly or refs/heads/nightly,
+  by using the GitHub REST refs API.
+
+inputs:
+  repository:
+    description: Target repository in owner/repo form. Defaults to the current workflow repository.
+    required: false
+    default: ${{ github.repository }}
+  ref:
+    description: Full ref name to create or update, for example refs/tags/nightly or refs/heads/nightly.
+    required: true
+  commit_sha:
+    description: Target commit SHA. Defaults to the current workflow SHA when omitted.
+    required: false
+    default: ${{ github.sha }}
+  token:
+    description: GitHub token authorized to create or update refs in the target repository.
+    required: true
+  force:
+    description: Whether to force-update an existing ref.
+    required: false
+    default: 'true'
+  create_if_missing:
+    description: Whether to create the ref when it does not exist.
+    required: false
+    default: 'true'
+  noop_if_unchanged:
+    description: Whether to skip the update when the ref already points to the target SHA.
+    required: false
+    default: 'true'
+
+outputs:
+  changed:
+    description: 'true when the ref was created or moved; otherwise false.'
+    value: ${{ steps.set_ref.outputs.changed }}
+  previous_sha:
+    description: Previous object SHA for the ref, or an empty string when the ref did not exist.
+    value: ${{ steps.set_ref.outputs.previous_sha }}
+  new_sha:
+    description: Target commit SHA after a successful run.
+    value: ${{ steps.set_ref.outputs.new_sha }}
+  ref:
+    description: Full ref name that was evaluated.
+    value: ${{ steps.set_ref.outputs.ref }}
+
+runs:
+  using: composite
+  steps:
+    - id: set_ref
+      name: Set Git ref
+      uses: actions/github-script@v8
+      with:
+        github-token: ${{ inputs.token }}
+        script: |
+          const repository = (process.env.GIT_REF_REPOSITORY ?? '').trim();
+          const ref = (process.env.GIT_REF_REF ?? '').trim();
+          const sha = (process.env.GIT_REF_COMMIT_SHA ?? '').trim();
+          const token = (process.env.GIT_REF_TOKEN ?? '').trim();
+
+          const parseBoolean = (name, value) => {
+            const normalized = (value ?? '').trim().toLowerCase();
+            if (normalized === 'true') return true;
+            if (normalized === 'false') return false;
+            throw new Error(`Input "${name}" must be either "true" or "false"`);
+          };
+
+          const describeError = (error) => {
+            const status = error.status ? `${error.status} ` : '';
+            const url = error.documentation_url ? ` (${error.documentation_url})` : '';
+            return `${status}${error.message}${url}`;
+          };
+
+          const validateRepository = (value) => {
+            const parts = value.split('/');
+            if (parts.length !== 2 || parts.some((part) => !part.trim())) {
+              throw new Error('Input "repository" must use owner/repo format');
+            }
+            return { owner: parts[0], repo: parts[1] };
+          };
+
+          const validateFullRef = (value) => {
+            if (!value.startsWith('refs/')) {
+              throw new Error('Input "ref" must be a full ref starting with "refs/"');
+            }
+
+            const segments = value.split('/');
+            if (segments.length < 3 || segments.some((segment) => segment.length === 0)) {
+              throw new Error('Input "ref" must include a namespace and name, such as refs/heads/name or refs/tags/name');
+            }
+
+            if (
+              value.endsWith('/')
+              || value.endsWith('.')
+              || value.includes('//')
+              || value.includes('..')
+              || value.includes('@{')
+              || /[\u0000-\u0020\u007f~^:?*[\\]/.test(value)
+            ) {
+              throw new Error('Input "ref" contains characters or sequences that are not valid in Git ref names');
+            }
+
+            const invalidSegment = segments.some((segment) => (
+              segment === '.'
+              || segment === '..'
+              || segment === '@'
+              || segment.startsWith('.')
+              || segment.endsWith('.lock')
+            ));
+            if (invalidSegment) {
+              throw new Error('Input "ref" contains an invalid path segment');
+            }
+          };
+
+          if (!repository) throw new Error('Input "repository" must be a non-empty string');
+          if (!ref) throw new Error('Input "ref" must be a non-empty string');
+          if (!sha) throw new Error('Input "commit_sha" must be a non-empty string');
+          if (!token) throw new Error('Input "token" must be a non-empty string');
+          if (!/^[0-9a-f]{40}$|^[0-9a-f]{64}$/i.test(sha)) {
+            throw new Error('Input "commit_sha" must be a 40- or 64-character hexadecimal commit SHA');
+          }
+
+          const props = validateRepository(repository);
+          validateFullRef(ref);
+
+          const force = parseBoolean('force', process.env.GIT_REF_FORCE);
+          const createIfMissing = parseBoolean('create_if_missing', process.env.GIT_REF_CREATE_IF_MISSING);
+          const noopIfUnchanged = parseBoolean('noop_if_unchanged', process.env.GIT_REF_NOOP_IF_UNCHANGED);
+          const apiRef = ref.replace(/^refs\//, '');
+
+          core.setOutput('ref', ref);
+          core.setOutput('new_sha', sha);
+
+          let previousSha = '';
+          let exists = false;
+
+          try {
+            const current = await github.rest.git.getRef({ ...props, ref: apiRef });
+            previousSha = current.data.object.sha;
+            exists = true;
+          } catch (error) {
+            if (error.status !== 404) {
+              throw new Error(`Failed to read ${ref} in ${repository}: ${describeError(error)}`);
+            }
+          }
+
+          core.setOutput('previous_sha', previousSha);
+
+          if (!exists) {
+            if (!createIfMissing) {
+              throw new Error(`Ref ${ref} does not exist in ${repository} and create_if_missing is false`);
+            }
+
+            try {
+              await github.rest.git.createRef({ ...props, ref, sha });
+            } catch (error) {
+              throw new Error(`Failed to create ${ref} in ${repository}: ${describeError(error)}`);
+            }
+
+            core.setOutput('changed', 'true');
+            core.info(`Created ${ref} at ${sha}`);
+            return;
+          }
+
+          if (previousSha === sha && noopIfUnchanged) {
+            core.setOutput('changed', 'false');
+            core.info(`${ref} already points at ${sha}; skipping update`);
+            return;
+          }
+
+          try {
+            await github.rest.git.updateRef({ ...props, ref: apiRef, sha, force });
+          } catch (error) {
+            throw new Error(`Failed to update ${ref} in ${repository}: ${describeError(error)}`);
+          }
+
+          core.setOutput('changed', previousSha === sha ? 'false' : 'true');
+          core.info(`Updated ${ref} from ${previousSha} to ${sha}`);
+      env:
+        GIT_REF_REPOSITORY: ${{ inputs.repository || github.repository }}
+        GIT_REF_REF: ${{ inputs.ref }}
+        GIT_REF_COMMIT_SHA: ${{ inputs.commit_sha || github.sha }}
+        GIT_REF_TOKEN: ${{ inputs.token }}
+        GIT_REF_FORCE: ${{ inputs.force }}
+        GIT_REF_CREATE_IF_MISSING: ${{ inputs.create_if_missing }}
+        GIT_REF_NOOP_IF_UNCHANGED: ${{ inputs.noop_if_unchanged }}
