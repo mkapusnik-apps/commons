@@ -4,6 +4,26 @@ description: Install and configure the project-wide stable Flutter toolchain.
 runs:
   using: composite
   steps:
+    - name: Free disk space for Android build
+      uses: AdityaGarg8/remove-unwanted-software@v5
+      with:
+        remove-dotnet: true
+        remove-haskell: true
+        remove-codeql: true
+        remove-docker-images: true
+
+    - name: Setup Java SDK
+      uses: actions/setup-java@v6
+      with:
+        distribution: temurin
+        java-version: '21'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v4
+      with:
+        packages: >-
+          tools platform-tools platforms;android-36 build-tools;36.0.0
+
     - name: Setup Flutter SDK
       uses: subosito/flutter-action@v2
       env:
