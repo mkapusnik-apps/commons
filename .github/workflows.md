@@ -109,6 +109,11 @@ the draft, making the published GitHub release the durable completion marker.
 Immutable tags are create-only. A floating tag moves only forward within its
 own major, so a new major does not move older floating tags.
 
+The publisher re-reads release state before it moves a floating tag. It uses an
+atomic Git force-with-lease update against the observed SHA. The update fails if
+another publication changes the tag first. Checkout stores the job token only
+until its post-job credential cleanup so Git can perform this leased update.
+
 Runs do not use GitHub Actions concurrency groups because those groups can
 replace a pending run and do not guarantee FIFO ordering. After activation,
 each pushed revision waits for the exact preceding branch head to have a
@@ -153,6 +158,10 @@ run, actor, target, bridge, previous release, authorization, and expiry.
 A rerun completes an exact partial state or reports an exact completed state as
 a no-op. Any conflict fails closed. After `2026-09-26T23:59:59Z`, a run can only
 complete an existing exact partial state. It cannot start a new publication.
+
+The bootstrap uses the same leased floating-tag update as the normal publisher.
+Two bootstrap runs can converge on the same target. A later publication cannot
+be replaced with the bootstrap target.
 
 After successful publication, the developer must remove the temporary workflow
 in a follow-up pull request. The developer should retain the expired manifest

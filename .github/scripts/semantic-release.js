@@ -553,7 +553,16 @@ async function awaitPredecessor(github, props, beforeSha, currentSha, core) {
       state.published.filter((item) => item.sha === currentSha),
       `published immutable releases for revision ${currentSha}`,
     );
-    if (currentPublished) return { state, completed: currentPublished };
+    if (currentPublished) {
+      const latestPublished = state.published.at(-1);
+      if (!latestPublished || latestPublished.tag !== currentPublished.tag) {
+        const latestDetail = latestPublished
+          ? `${latestPublished.tag} at ${latestPublished.sha}`
+          : '(none)';
+        fail(`Revision ${currentSha} was published as historical ${currentPublished.tag}, but the latest completed release is ${latestDetail}`);
+      }
+      return { state, completed: currentPublished };
+    }
 
     if (state.published.length === 0) {
       fail('No successful immutable release exists; create the prerequisite v1.0.0 release and v1 tag before enabling automatic publication');
@@ -646,7 +655,35 @@ async function ensureDraftRelease(github, props, state, tag, sha) {
   }
 }
 
-async function setFloatingMajor(github, props, target, sha, state) {
+async function compareAndSwapTag(github, props, tag, expectedSha, targetSha) {
+  const localHead = runGit(['rev-parse', 'HEAD']).trim();
+  if (localHead !== targetSha) {
+    fail(`Checked-out revision ${localHead} does not match floating-tag target ${targetSha}`);
+  }
+  try {
+    childProcess.execFileSync('git', [
+      'push',
+      '--porcelain',
+      `--force-with-lease=refs/tags/${tag}:${expectedSha}`,
+      'origin',
+      `HEAD:refs/tags/${tag}`,
+    ], {
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    const current = await getRefOrNull(github, props, `tags/${tag}`);
+    const currentSha = current ? await resolveObjectToCommit(github, props, current.object) : '(missing)';
+    if (currentSha === targetSha) return;
+    const detail = error.stderr ? error.stderr.toString().trim() : error.message;
+    fail(`Ref tags/${tag} changed or could not be updated; expected ${expectedSha}, found ${currentSha}. Refusing to overwrite it: ${detail}`);
+  }
+
+  await requireRefAt(github, props, `tags/${tag}`, targetSha);
+}
+
+async function setFloatingMajor(github, props, target, sha) {
   const name = `v${target.major}`;
   const refName = `tags/${name}`;
   const existing = await getRefOrNull(github, props, refName);
@@ -662,6 +699,7 @@ async function setFloatingMajor(github, props, target, sha, state) {
   const current = await getRefOrNull(github, props, refName);
   if (!current) fail(`Floating tag ${name} conflicted and cannot be read`);
   const currentSha = await resolveObjectToCommit(github, props, current.object);
+  const state = await loadReleaseState(github, props);
   if (currentSha === sha) {
     verifyInProgressRelease(state, target);
     return;
@@ -677,7 +715,7 @@ async function setFloatingMajor(github, props, target, sha, state) {
   if (compareVersions(currentPublication, target) >= 0) {
     fail(`Floating tag ${name} points to ${currentPublication.tag}; refusing to move it backward to ${target.tag}`);
   }
-  await github.rest.git.updateRef({ ...props, ref: refName, sha, force: true });
+  await compareAndSwapTag(github, props, name, currentSha, sha);
 }
 
 function baselineAuditBody(authorization, targetSha, context) {
@@ -861,7 +899,17 @@ async function bootstrapBaseline({ github, context, core }) {
       if (inspected.stage !== 'draft-created') fail('Draft creation did not reach the authorized state');
     }
     if (inspected.stage === 'draft-created') {
-      await github.rest.git.updateRef({ ...props, ref: 'tags/v1', sha: targetSha, force: true });
+      inspected = await inspectBaselineState(github, props, authorization, targetSha);
+    }
+    if (inspected.stage === 'draft-created') {
+      // The lease is the shared serialization point for bootstrap and normal publication.
+      await compareAndSwapTag(
+        github,
+        props,
+        'v1',
+        authorization.previousRelease.sha,
+        targetSha,
+      );
       inspected = await inspectBaselineState(github, props, authorization, targetSha);
       if (inspected.stage !== 'major-moved') fail('Floating tag update did not reach the authorized state');
     }
@@ -918,16 +966,6 @@ async function publish({ github, context, core }) {
     if (context.payload.after !== sha) fail(`Push after SHA ${context.payload.after} does not match workflow SHA ${sha}`);
 
     const props = { owner: context.repo.owner, repo: context.repo.repo };
-    const initialState = await loadReleaseState(github, props);
-    const alreadyCompleted = uniqueItem(
-      initialState.published.filter((item) => item.sha === sha),
-      `published immutable releases for revision ${sha}`,
-    );
-    if (alreadyCompleted) {
-      await verifyCompletedRelease(github, props, initialState, alreadyCompleted);
-      core.info(`${outcomePrefix} outcome=already-complete version=${alreadyCompleted.tag}`);
-      return;
-    }
     const gate = await awaitPredecessor(github, props, beforeSha, sha, core);
     if (gate.completed) {
       await verifyCompletedRelease(github, props, gate.state, gate.completed);
@@ -976,7 +1014,7 @@ async function publish({ github, context, core }) {
     }
 
     verifyInProgressRelease(stateWithRelease, target);
-    await setFloatingMajor(github, props, target, sha, stateWithRelease);
+    await setFloatingMajor(github, props, target, sha);
     const immutableRef = await getRefOrNull(github, props, `tags/${tag}`);
     const floatingRef = await getRefOrNull(github, props, `tags/v${target.major}`);
     if (!immutableRef || await resolveObjectToCommit(github, props, immutableRef.object) !== sha) {

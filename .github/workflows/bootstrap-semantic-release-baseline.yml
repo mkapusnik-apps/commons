@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Bootstrap fixed release baseline
         uses: actions/github-script@v9

@@ -83,6 +83,8 @@ The fixed bootstrap reference `v1.0` is not part of later automatic publications
 - A retry resumes the same version when the immutable tag or floating major tag already moved to the revision but the GitHub release was not published. It completes the missing release instead of treating that partial version as the predecessor for a new allocation.
 - A partial publication is not a completed predecessor for any later revision. Later qualifying revisions remain blocked until the earlier publication is completed or its conflict is resolved.
 - If an expected immutable version already identifies a different revision, publication fails as a conflict and does not move that tag.
+- A floating-tag update uses the observed ref SHA as an atomic lease. A concurrent change rejects the update instead of overwriting the new ref.
+- A completed-revision no-op must be a forward push to the latest completed publication. An older published revision remains invalid.
 - A run must not report successful publication while the immutable tag, release, and applicable floating tag are inconsistent.
 - Failures identify the affected revision and publication outcome clearly enough for a retry; a retry must not silently change the previously determined classification.
 - Overlapping publications must not create duplicate, skipped, reversed, or conflicting versions.
