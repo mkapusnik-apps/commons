@@ -1,0 +1,46 @@
+name: Bootstrap Semantic Release Baseline
+
+run-name: Bootstrap v1.0.4 at ${{ inputs.target_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Full SHA of the current master revision
+        required: true
+        type: string
+      confirmation:
+        description: Enter RESET RELEASE BASELINE TO V1.0.4
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    name: Bootstrap semantic release baseline
+    if: ${{ github.ref == 'refs/heads/master' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release-baseline-reset-2026
+
+    steps:
+      - name: Check out authorized master revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Bootstrap fixed release baseline
+        uses: actions/github-script@v9
+        env:
+          BASELINE_TARGET_SHA: ${{ inputs.target_sha }}
+          BASELINE_CONFIRMATION: ${{ inputs.confirmation }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const semanticRelease = require(
+              './.github/scripts/semantic-release.js',
+            );
+            await semanticRelease.bootstrapBaseline({ github, context, core });
