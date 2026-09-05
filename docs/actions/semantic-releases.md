@@ -25,6 +25,20 @@ The three initial references have distinct compatibility contracts:
 - `v1.0` is a fixed minor-series reference for the initial stable release and must never move.
 - `v1` is the floating major reference and moves forward to the latest successfully published compatible v1 release.
 
+## 2026 history reset bridge
+
+The repository history reset created root commit `43b3c2c240d706eddb4801d637c108502d49f279`. Its tree is identical to historical tip `7e4573b0f9e0d81262d4a0435b2dbfa735181452`. Both commits use tree `003b409091678825a815b966442919c8a38ef35d`.
+
+The one-time bootstrap publishes patch release `v1.0.4` at the verified current `master` revision. It bridges the completed `v1.0.3` release at `17556b1efbed0bceffc8d3246bbc06fb8cbaef71` into the reset history. It does not change historical immutable releases or fixed `v1.0`.
+
+The workflow requires the protected `release-baseline-reset-2026` Environment, which must require an independent reviewer, prevent self-review, and allow deployments only from `master`. An operator must supply the full current `master` SHA and the fixed confirmation phrase. The workflow determines the version from the expiring authorization manifest.
+
+The bootstrap validates all release resources before each change. It accepts only the initial state, one of its ordered partial states, or the complete state. A retry resumes an exact partial state. A conflict stops all later changes.
+
+The authorization expires at `2026-09-26T23:59:59Z`. After expiry, the workflow can complete an exact partial publication but cannot start a new publication. The published release body contains the authorization and workflow audit metadata.
+
+Remove the temporary bootstrap workflow after `v1.0.4` is complete. Retain the manifest as the authorization record.
+
 ## Version classification
 
 Starting from the preceding immutable version `vX.Y.Z`, evaluate the following rules in order and use the first match:
@@ -69,6 +83,8 @@ The fixed bootstrap reference `v1.0` is not part of later automatic publications
 - A retry resumes the same version when the immutable tag or floating major tag already moved to the revision but the GitHub release was not published. It completes the missing release instead of treating that partial version as the predecessor for a new allocation.
 - A partial publication is not a completed predecessor for any later revision. Later qualifying revisions remain blocked until the earlier publication is completed or its conflict is resolved.
 - If an expected immutable version already identifies a different revision, publication fails as a conflict and does not move that tag.
+- A floating-tag update uses the observed ref SHA as an atomic lease. A concurrent change rejects the update instead of overwriting the new ref.
+- A completed-revision no-op must be a forward push to the latest completed publication. An older published revision remains invalid.
 - A run must not report successful publication while the immutable tag, release, and applicable floating tag are inconsistent.
 - Failures identify the affected revision and publication outcome clearly enough for a retry; a retry must not silently change the previously determined classification.
 - Overlapping publications must not create duplicate, skipped, reversed, or conflicting versions.
@@ -100,3 +116,6 @@ The fixed bootstrap reference `v1.0` is not part of later automatic publications
 - **HP-28-AC-16:** The bootstrap publishes a stable, non-draft GitHub release for `v1.0.0` whose tag identifies the captured canonical `master` SHA.
 - **HP-28-AC-17:** When unreleased commits exist between the bootstrap and the first qualifying pushed head, the first automated publication succeeds from the bootstrap baseline and publishes one correctly classified version for that head.
 - **HP-28-AC-18:** A partial publication is never used as the predecessor of a later pushed revision; sequential and concurrent pushes wait for each earlier publication to complete rather than absorbing, skipping, or reversing it.
+- **HP-28-AC-19:** The history reset bootstrap publishes only `v1.0.4` at the verified current `master` SHA after it validates the exact tree bridge and prior release state.
+- **HP-28-AC-20:** The history reset bootstrap is idempotent, rejects conflicting partial states, preserves historical immutable tags and fixed `v1.0`, and records audit metadata.
+- **HP-28-AC-21:** Expiry blocks a new bootstrap publication but permits completion of an exact partial `v1.0.4` publication.

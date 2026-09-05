@@ -6,6 +6,8 @@ const fs = require('node:fs');
 const REGISTRY_PATH = '.github/semantic-release/actions.json';
 const DECLARATION_DIRECTORY = '.github/semantic-release/declarations/';
 const PUBLISH_WORKFLOW_PATH = '.github/workflows/publish-semantic-release.yml';
+const BASELINE_AUTHORIZATION_PATH = '.github/semantic-release/release-baseline-reset-2026.json';
+const BASELINE_CONFIRMATION = 'RESET RELEASE BASELINE TO V1.0.4';
 const IMMUTABLE_TAG_PATTERN = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const ZERO_SHA_PATTERN = /^0+$/;
 const RELEASE_STATE_VERIFICATION_ATTEMPTS = 6;
@@ -93,6 +95,75 @@ function nextVersion(previous, outcome) {
 
 function formatVersion(version) {
   return `v${version.major}.${version.minor}.${version.patch}`;
+}
+
+function validateBaselineAuthorization(content, path = BASELINE_AUTHORIZATION_PATH) {
+  const authorization = parseJson(path, content);
+  requireExactKeys(path, authorization, [
+    'schema',
+    'authorization',
+    'historicalTip',
+    'resetAnchor',
+    'bridgeTree',
+    'historicalReleases',
+    'previousRelease',
+    'fixedMinor',
+    'expectedClassification',
+    'expectedTag',
+    'expiresAt',
+  ]);
+  if (authorization.schema !== 1) fail(`${path} schema must be 1`);
+  if (authorization.authorization !== 'release-baseline-reset-2026') {
+    fail(`${path} has an unexpected authorization identifier`);
+  }
+  for (const key of ['historicalTip', 'resetAnchor', 'bridgeTree']) {
+    if (!/^[0-9a-f]{40}$/.test(authorization[key])) fail(`${path} ${key} must be a full lowercase SHA`);
+  }
+  requireExactKeys(`${path} previousRelease`, authorization.previousRelease, ['tag', 'sha']);
+  requireExactKeys(`${path} fixedMinor`, authorization.fixedMinor, ['tag', 'sha']);
+  if (!Array.isArray(authorization.historicalReleases) || authorization.historicalReleases.length !== 4) {
+    fail(`${path} historicalReleases must contain exactly four releases`);
+  }
+  const historicalTags = [];
+  for (const [index, release] of authorization.historicalReleases.entries()) {
+    const releasePath = `${path} historicalReleases[${index}]`;
+    requireExactKeys(releasePath, release, ['tag', 'sha']);
+    if (!versionFromTag(release.tag) || !/^[0-9a-f]{40}$/.test(release.sha)) {
+      fail(`${releasePath} must contain an immutable version tag and full lowercase SHA`);
+    }
+    historicalTags.push(release.tag);
+  }
+  if (historicalTags.join(',') !== 'v1.0.0,v1.0.1,v1.0.2,v1.0.3') {
+    fail(`${path} historicalReleases must list v1.0.0 through v1.0.3 in order`);
+  }
+  if (authorization.previousRelease.tag !== 'v1.0.3' || !/^[0-9a-f]{40}$/.test(authorization.previousRelease.sha)) {
+    fail(`${path} must authorize previous release v1.0.3 at a full lowercase SHA`);
+  }
+  const lastHistorical = authorization.historicalReleases.at(-1);
+  if (lastHistorical.tag !== authorization.previousRelease.tag || lastHistorical.sha !== authorization.previousRelease.sha) {
+    fail(`${path} previousRelease must equal the last historical release`);
+  }
+  if (authorization.fixedMinor.tag !== 'v1.0' || !/^[0-9a-f]{40}$/.test(authorization.fixedMinor.sha)) {
+    fail(`${path} must identify fixed tag v1.0 at a full lowercase SHA`);
+  }
+  if (authorization.expectedClassification !== 'patch' || authorization.expectedTag !== 'v1.0.4') {
+    fail(`${path} must authorize only patch release v1.0.4`);
+  }
+  if (formatVersion(nextVersion(versionFromTag(lastHistorical.tag), 'patch')) !== authorization.expectedTag) {
+    fail(`${path} expectedTag must be the patch after previousRelease`);
+  }
+  if (authorization.fixedMinor.sha !== authorization.historicalReleases[0].sha) {
+    fail(`${path} fixedMinor must remain at the v1.0.0 revision`);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(authorization.expiresAt)) {
+    fail(`${path} expiresAt must be an exact UTC timestamp`);
+  }
+  const expiresAt = Date.parse(authorization.expiresAt);
+  if (!Number.isFinite(expiresAt)) fail(`${path} expiresAt is invalid`);
+  if (new Date(expiresAt).toISOString().replace('.000Z', 'Z') !== authorization.expiresAt) {
+    fail(`${path} expiresAt must identify a real UTC date and second`);
+  }
+  return { ...authorization, expiresAtMilliseconds: expiresAt };
 }
 
 function classifyChangeSet({ changedPaths, pathExistsAtBase, pathExistsAtHead, readAtBase, readAtHead }) {
@@ -390,6 +461,14 @@ async function getRefOrNull(github, props, ref) {
   }
 }
 
+async function requireRefAt(github, props, ref, expectedSha) {
+  const value = await getRefOrNull(github, props, ref);
+  if (!value) fail(`Required ref ${ref} is missing`);
+  const actualSha = await resolveObjectToCommit(github, props, value.object);
+  if (actualSha !== expectedSha) fail(`Ref ${ref} points to ${actualSha}, expected ${expectedSha}`);
+  return value;
+}
+
 function verifyInProgressRelease(state, publication) {
   const immutable = state.immutable.find((item) => (
     item.tag === publication.tag && item.sha === publication.sha
@@ -474,7 +553,16 @@ async function awaitPredecessor(github, props, beforeSha, currentSha, core) {
       state.published.filter((item) => item.sha === currentSha),
       `published immutable releases for revision ${currentSha}`,
     );
-    if (currentPublished) return { state, completed: currentPublished };
+    if (currentPublished) {
+      const latestPublished = state.published.at(-1);
+      if (!latestPublished || latestPublished.tag !== currentPublished.tag) {
+        const latestDetail = latestPublished
+          ? `${latestPublished.tag} at ${latestPublished.sha}`
+          : '(none)';
+        fail(`Revision ${currentSha} was published as historical ${currentPublished.tag}, but the latest completed release is ${latestDetail}`);
+      }
+      return { state, completed: currentPublished };
+    }
 
     if (state.published.length === 0) {
       fail('No successful immutable release exists; create the prerequisite v1.0.0 release and v1 tag before enabling automatic publication');
@@ -567,7 +655,35 @@ async function ensureDraftRelease(github, props, state, tag, sha) {
   }
 }
 
-async function setFloatingMajor(github, props, target, sha, state) {
+async function compareAndSwapTag(github, props, tag, expectedSha, targetSha) {
+  const localHead = runGit(['rev-parse', 'HEAD']).trim();
+  if (localHead !== targetSha) {
+    fail(`Checked-out revision ${localHead} does not match floating-tag target ${targetSha}`);
+  }
+  try {
+    childProcess.execFileSync('git', [
+      'push',
+      '--porcelain',
+      `--force-with-lease=refs/tags/${tag}:${expectedSha}`,
+      'origin',
+      `HEAD:refs/tags/${tag}`,
+    ], {
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    const current = await getRefOrNull(github, props, `tags/${tag}`);
+    const currentSha = current ? await resolveObjectToCommit(github, props, current.object) : '(missing)';
+    if (currentSha === targetSha) return;
+    const detail = error.stderr ? error.stderr.toString().trim() : error.message;
+    fail(`Ref tags/${tag} changed or could not be updated; expected ${expectedSha}, found ${currentSha}. Refusing to overwrite it: ${detail}`);
+  }
+
+  await requireRefAt(github, props, `tags/${tag}`, targetSha);
+}
+
+async function setFloatingMajor(github, props, target, sha) {
   const name = `v${target.major}`;
   const refName = `tags/${name}`;
   const existing = await getRefOrNull(github, props, refName);
@@ -583,6 +699,7 @@ async function setFloatingMajor(github, props, target, sha, state) {
   const current = await getRefOrNull(github, props, refName);
   if (!current) fail(`Floating tag ${name} conflicted and cannot be read`);
   const currentSha = await resolveObjectToCommit(github, props, current.object);
+  const state = await loadReleaseState(github, props);
   if (currentSha === sha) {
     verifyInProgressRelease(state, target);
     return;
@@ -598,7 +715,241 @@ async function setFloatingMajor(github, props, target, sha, state) {
   if (compareVersions(currentPublication, target) >= 0) {
     fail(`Floating tag ${name} points to ${currentPublication.tag}; refusing to move it backward to ${target.tag}`);
   }
-  await github.rest.git.updateRef({ ...props, ref: refName, sha, force: true });
+  await compareAndSwapTag(github, props, name, currentSha, sha);
+}
+
+function baselineAuditBody(authorization, targetSha, context) {
+  return [
+    'One-time semantic release baseline bridge.',
+    '',
+    `- Release: ${authorization.expectedTag}`,
+    `- Classification: ${authorization.expectedClassification}`,
+    `- Target master: ${targetSha}`,
+    `- Historical tip: ${authorization.historicalTip}`,
+    `- Reset anchor: ${authorization.resetAnchor}`,
+    `- Bridge tree: ${authorization.bridgeTree}`,
+    `- Previous release: ${authorization.previousRelease.tag} at ${authorization.previousRelease.sha}`,
+    `- Authorization: ${authorization.authorization}`,
+    `- Authorization expiry: ${authorization.expiresAt}`,
+    `- Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+    `- Initiated by: @${context.actor}`,
+  ].join('\n');
+}
+
+function verifyBaselineAuditBody(body, authorization, targetSha) {
+  const required = [
+    `Release: ${authorization.expectedTag}`,
+    `Classification: ${authorization.expectedClassification}`,
+    `Target master: ${targetSha}`,
+    `Historical tip: ${authorization.historicalTip}`,
+    `Reset anchor: ${authorization.resetAnchor}`,
+    `Bridge tree: ${authorization.bridgeTree}`,
+    `Previous release: ${authorization.previousRelease.tag} at ${authorization.previousRelease.sha}`,
+    `Authorization: ${authorization.authorization}`,
+    `Authorization expiry: ${authorization.expiresAt}`,
+    'Workflow run:',
+    'Initiated by:',
+  ];
+  for (const value of required) {
+    if (!body?.includes(value)) fail(`Release audit metadata is missing ${JSON.stringify(value)}`);
+  }
+}
+
+async function inspectBaselineState(github, props, authorization, targetSha) {
+  const state = await loadReleaseState(github, props);
+  for (const historical of authorization.historicalReleases) {
+    const immutable = state.immutable.find((item) => item.tag === historical.tag);
+    if (!immutable || immutable.sha !== historical.sha) {
+      fail(`Historical immutable tag ${historical.tag} must remain at ${historical.sha}`);
+    }
+    const release = state.releasesByTag.get(historical.tag);
+    if (!release || release.draft || release.prerelease) {
+      fail(`Historical release ${historical.tag} must remain published and stable`);
+    }
+  }
+  const allowedReleaseTags = new Set([
+    ...authorization.historicalReleases.map((item) => item.tag),
+    authorization.expectedTag,
+  ]);
+  const unexpectedImmutable = state.immutable.find((item) => !allowedReleaseTags.has(item.tag));
+  if (unexpectedImmutable) fail(`Unexpected immutable semantic tag ${unexpectedImmutable.tag} exists`);
+  const unexpectedRelease = [...state.releasesByTag.keys()].find((tag) => !allowedReleaseTags.has(tag));
+  if (unexpectedRelease) fail(`Unexpected semantic GitHub release ${unexpectedRelease} exists`);
+  const previous = state.immutable.find((item) => item.tag === authorization.previousRelease.tag);
+  if (!previous || previous.sha !== authorization.previousRelease.sha) {
+    fail(`${authorization.previousRelease.tag} must remain at ${authorization.previousRelease.sha}`);
+  }
+  const previousRelease = state.releasesByTag.get(authorization.previousRelease.tag);
+  if (!previousRelease || previousRelease.draft || previousRelease.prerelease) {
+    fail(`${authorization.previousRelease.tag} must remain a published stable GitHub release`);
+  }
+
+  await requireRefAt(github, props, `tags/${authorization.fixedMinor.tag}`, authorization.fixedMinor.sha);
+  const targetImmutable = state.immutable.find((item) => item.tag === authorization.expectedTag) || null;
+  if (targetImmutable && targetImmutable.sha !== targetSha) {
+    fail(`${authorization.expectedTag} points to ${targetImmutable.sha}, expected ${targetSha}`);
+  }
+  const laterImmutable = state.immutable.find((item) => compareVersions(item, versionFromTag(authorization.expectedTag)) > 0);
+  if (laterImmutable) fail(`Unexpected later immutable release tag ${laterImmutable.tag} exists`);
+
+  const release = state.releasesByTag.get(authorization.expectedTag) || null;
+  if (release?.prerelease) fail(`${authorization.expectedTag} must not be a prerelease`);
+  if (release && !targetImmutable) fail(`${authorization.expectedTag} release exists without its immutable tag`);
+  if (release) verifyBaselineAuditBody(release.body, authorization, targetSha);
+
+  const floating = await getRefOrNull(github, props, 'tags/v1');
+  if (!floating) fail('Floating tag v1 is missing');
+  const floatingSha = await resolveObjectToCommit(github, props, floating.object);
+  if (![authorization.previousRelease.sha, targetSha].includes(floatingSha)) {
+    fail(`Floating tag v1 points to unauthorized revision ${floatingSha}`);
+  }
+
+  let stage = 'initial';
+  if (targetImmutable && !release && floatingSha === authorization.previousRelease.sha) stage = 'tag-created';
+  else if (targetImmutable && release?.draft && floatingSha === authorization.previousRelease.sha) stage = 'draft-created';
+  else if (targetImmutable && release?.draft && floatingSha === targetSha) stage = 'major-moved';
+  else if (targetImmutable && release && !release.draft && floatingSha === targetSha) stage = 'complete';
+  else if (!(targetImmutable === null && release === null && floatingSha === authorization.previousRelease.sha)) {
+    fail('Release baseline resources form an unauthorized partial state');
+  }
+
+  return { state, release, stage };
+}
+
+async function verifyBridgeCommit(github, props, sha, expectedTree, description) {
+  const commit = await github.rest.git.getCommit({ ...props, commit_sha: sha });
+  if (commit.data.tree.sha !== expectedTree) {
+    fail(`${description} ${sha} has tree ${commit.data.tree.sha}, expected ${expectedTree}`);
+  }
+  return commit.data;
+}
+
+async function bootstrapBaseline({ github, context, core }) {
+  const targetSha = (process.env.BASELINE_TARGET_SHA || '').trim();
+  const confirmation = process.env.BASELINE_CONFIRMATION || '';
+  const outcomePrefix = `baseline-target=${targetSha || '(missing)'}`;
+  try {
+    if (context.eventName !== 'workflow_dispatch' || context.ref !== 'refs/heads/master') {
+      fail(`Only workflow_dispatch on refs/heads/master is authorized; event=${context.eventName}, ref=${context.ref}`);
+    }
+    if (!/^[0-9a-f]{40}$/.test(targetSha)) fail('target_sha must be a full lowercase 40-character SHA');
+    if (confirmation !== BASELINE_CONFIRMATION) fail(`confirmation must exactly equal ${BASELINE_CONFIRMATION}`);
+    if (context.sha !== targetSha) fail(`Dispatched workflow SHA ${context.sha} does not match target_sha ${targetSha}`);
+
+    const authorization = validateBaselineAuthorization(fs.readFileSync(BASELINE_AUTHORIZATION_PATH, 'utf8'));
+    const props = { owner: context.repo.owner, repo: context.repo.repo };
+    await requireRefAt(github, props, 'heads/master', targetSha);
+
+    // A completed exact publication is a safe no-op even though the reset severed ancestry.
+    let inspected = await inspectBaselineState(github, props, authorization, targetSha);
+    if (inspected.stage === 'complete') {
+      core.info(`${outcomePrefix} outcome=already-complete version=${authorization.expectedTag}`);
+      return;
+    }
+
+    const historical = await verifyBridgeCommit(
+      github, props, authorization.historicalTip, authorization.bridgeTree, 'Historical tip',
+    );
+    const reset = await verifyBridgeCommit(
+      github, props, authorization.resetAnchor, authorization.bridgeTree, 'Reset anchor',
+    );
+    if (reset.parents.length !== 0) fail(`Reset anchor ${authorization.resetAnchor} must be a root commit`);
+    if (historical.sha === reset.sha) fail('Historical tip and reset anchor must be distinct commits');
+    if (targetSha !== authorization.resetAnchor) {
+      const relation = await revisionRelation(github, props, authorization.resetAnchor, targetSha);
+      if (relation !== 'ahead') fail(`Current master must descend from reset anchor; status is ${relation}`);
+    }
+
+    if (Date.now() > authorization.expiresAtMilliseconds && inspected.stage === 'initial') {
+      fail(`Authorization expired at ${authorization.expiresAt}; a new publication cannot start`);
+    }
+
+    const target = { ...versionFromTag(authorization.expectedTag), sha: targetSha };
+    const auditBody = baselineAuditBody(authorization, targetSha, context);
+    if (inspected.stage === 'initial') {
+      await createImmutableRef(github, props, authorization.expectedTag, targetSha);
+      inspected = await inspectBaselineState(github, props, authorization, targetSha);
+      if (inspected.stage !== 'tag-created') fail('Immutable tag creation did not reach the authorized state');
+    }
+    if (inspected.stage === 'tag-created') {
+      let creationError = null;
+      try {
+        await github.rest.repos.createRelease({
+          ...props,
+          tag_name: authorization.expectedTag,
+          target_commitish: targetSha,
+          name: authorization.expectedTag,
+          body: auditBody,
+          draft: true,
+          prerelease: false,
+        });
+      } catch (error) {
+        if (error.status !== 422) throw error;
+        creationError = error;
+      }
+      inspected = await awaitReleaseState(
+        github,
+        props,
+        (state) => state.releasesByTag.has(authorization.expectedTag),
+        creationError
+          ? `Draft release ${authorization.expectedTag} was not readable after createRelease returned ${githubApiErrorDetail(creationError)}`
+          : `Draft release ${authorization.expectedTag} did not become readable`,
+        creationError,
+      ).then(() => inspectBaselineState(github, props, authorization, targetSha));
+      if (inspected.stage !== 'draft-created') fail('Draft creation did not reach the authorized state');
+    }
+    if (inspected.stage === 'draft-created') {
+      inspected = await inspectBaselineState(github, props, authorization, targetSha);
+    }
+    if (inspected.stage === 'draft-created') {
+      // The lease is the shared serialization point for bootstrap and normal publication.
+      await compareAndSwapTag(
+        github,
+        props,
+        'v1',
+        authorization.previousRelease.sha,
+        targetSha,
+      );
+      inspected = await inspectBaselineState(github, props, authorization, targetSha);
+      if (inspected.stage !== 'major-moved') fail('Floating tag update did not reach the authorized state');
+    }
+    if (inspected.stage === 'major-moved') {
+      await github.rest.repos.updateRelease({
+        ...props,
+        release_id: inspected.release.id,
+        tag_name: authorization.expectedTag,
+        target_commitish: targetSha,
+        name: authorization.expectedTag,
+        body: auditBody,
+        draft: false,
+        prerelease: false,
+      });
+    }
+
+    const completed = await awaitReleaseState(
+      github,
+      props,
+      (state) => state.published.some((item) => item.tag === authorization.expectedTag && item.sha === targetSha),
+      `Release ${authorization.expectedTag} did not verify as published at ${targetSha}`,
+    );
+    await verifyCompletedRelease(github, props, completed, target);
+    inspected = await inspectBaselineState(github, props, authorization, targetSha);
+    if (inspected.stage !== 'complete') fail('Release baseline postconditions are incomplete');
+    core.info(`${outcomePrefix} outcome=published version=${authorization.expectedTag}`);
+    await core.summary
+      .addHeading('Semantic release baseline')
+      .addTable([
+        [{ data: 'Target', header: true }, targetSha],
+        [{ data: 'Version', header: true }, authorization.expectedTag],
+        [{ data: 'Classification', header: true }, authorization.expectedClassification],
+        [{ data: 'Bridge tree', header: true }, authorization.bridgeTree],
+        [{ data: 'Outcome', header: true }, 'published'],
+      ])
+      .write();
+  } catch (error) {
+    core.error(`${outcomePrefix} outcome=failed message=${error.message}`);
+    throw error;
+  }
 }
 
 async function publish({ github, context, core }) {
@@ -663,7 +1014,7 @@ async function publish({ github, context, core }) {
     }
 
     verifyInProgressRelease(stateWithRelease, target);
-    await setFloatingMajor(github, props, target, sha, stateWithRelease);
+    await setFloatingMajor(github, props, target, sha);
     const immutableRef = await getRefOrNull(github, props, `tags/${tag}`);
     const floatingRef = await getRefOrNull(github, props, `tags/v${target.major}`);
     if (!immutableRef || await resolveObjectToCommit(github, props, immutableRef.object) !== sha) {
@@ -722,12 +1073,14 @@ async function publish({ github, context, core }) {
 }
 
 module.exports = {
+  bootstrapBaseline,
   classifyChangeSet,
   publish,
   validateLocal,
   validateWorktree,
   validateRegistry,
   validateDeclaration,
+  validateBaselineAuthorization,
 };
 
 if (require.main === module) {

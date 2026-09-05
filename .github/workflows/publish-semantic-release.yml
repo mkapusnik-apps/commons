@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Classify and publish pushed revision
         uses: actions/github-script@v9

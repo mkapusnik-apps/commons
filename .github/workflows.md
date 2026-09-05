@@ -98,21 +98,21 @@ no workflow artifact.
 
 The publisher compares the complete repository trees from the latest completed
 immutable release in the pushed head's `master` history to the pushed head.
-Classification is major before minor before patch. The bootstrap creates
-`v1.0.0`, fixed `v1.0`, floating `v1`, and a stable, non-draft `v1.0.0` GitHub
-release at canonical `master` revision
-`1a26ddc0defdd944902e58f1e428548a4ceca90e` before this automation is merged.
-The first automated push is allowed to cross the resulting activation gap: its
-event `before` revision has no release and does not contain the publication
-workflow, so the publisher classifies from the latest completed ancestor.
-Publication fails clearly if that release or its floating-major prerequisite is
-missing or inconsistent. Later automatic publications do not move `v1.0`.
+Classification is major before minor before patch. The initial baseline is
+`v1.0.0` at `1a26ddc0defdd944902e58f1e428548a4ceca90e`. The 2026 history reset
+requires the one-time `v1.0.4` bridge described below. Later publications use
+that completed release as the reset history baseline. They do not move `v1.0`.
 
 Publication uses an immutable version tag, a draft release, and the applicable
 floating-major tag. It verifies both refs at the pushed SHA before publishing
 the draft, making the published GitHub release the durable completion marker.
 Immutable tags are create-only. A floating tag moves only forward within its
 own major, so a new major does not move older floating tags.
+
+The publisher re-reads release state before it moves a floating tag. It uses an
+atomic Git force-with-lease update against the observed SHA. The update fails if
+another publication changes the tag first. Checkout stores the job token only
+until its post-job credential cleanup so Git can perform this leased update.
 
 Runs do not use GitHub Actions concurrency groups because those groups can
 replace a pending run and do not guarantee FIFO ordering. After activation,
@@ -135,3 +135,34 @@ classification/publication outcome, and version when allocated. Common
 blocking failures are a missing prerequisite release, a missing or ambiguous
 declaration, an invalid registry, an immutable-tag conflict, an inconsistent
 floating tag, or a predecessor that did not finish within the wait period.
+
+## One-time release baseline reset
+
+`Bootstrap Semantic Release Baseline` is a temporary manual workflow for the
+2026 history reset. An operator must dispatch it from `master` at the exact
+current `master` SHA. The operator must also enter
+`RESET RELEASE BASELINE TO V1.0.4`.
+
+The `release-baseline-reset-2026` Environment must require an independent
+reviewer, prevent self-review, and allow deployments only from `master`. The
+workflow has only `contents: write` permission. It uses no secret and publishes
+no workflow artifact.
+
+The workflow verifies the approved historical tip, root reset anchor, and their
+identical tree before it changes release state. It also verifies the completed
+`v1.0.3` release, fixed `v1.0`, current `master`, and all possible `v1.0.4`
+partial states. It then creates immutable `v1.0.4`, creates its draft release,
+moves `v1`, and publishes the release. The release body records the workflow
+run, actor, target, bridge, previous release, authorization, and expiry.
+
+A rerun completes an exact partial state or reports an exact completed state as
+a no-op. Any conflict fails closed. After `2026-09-26T23:59:59Z`, a run can only
+complete an existing exact partial state. It cannot start a new publication.
+
+The bootstrap uses the same leased floating-tag update as the normal publisher.
+Two bootstrap runs can converge on the same target. A later publication cannot
+be replaced with the bootstrap target.
+
+After successful publication, the developer must remove the temporary workflow
+in a follow-up pull request. The developer should retain the expired manifest
+and release audit metadata as the authorization record.
