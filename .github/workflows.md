@@ -75,15 +75,27 @@ One publisher runs at a time.
 GitHub may replace an older pending run with a newer pending run.
 The newest pending run evaluates the complete scoped tree difference from the latest release.
 It therefore publishes the cumulative scoped tree when an older pending run is replaced.
+A newer automatic run may also replace a pending manual-major run.
+The operator must re-dispatch the manual workflow against current `master` when this happens.
 
 The publisher creates immutable tags without force.
 It moves a floating major only from a recognized older release and uses a Git lease.
-It rejects immutable tag conflicts, incomplete unrelated releases, unknown floating targets, and backward floating moves.
+It rejects immutable conflicts, unknown partial states, unknown floating targets, and backward floating moves.
 
-A retry reuses an exact immutable tag, fixed major-minor tag, draft release, or floating tag.
-It completes the same version when the existing partial state identifies the same target.
-It fails when a partial state identifies another target.
+An automatic run accepts one exact incomplete next-patch tag.
+The tag must contain a scoped change from the latest stable release.
+Its release must be absent or draft.
+Its floating major must identify either the latest stable release or the partial target.
+
+A current `master` run completes that partial release before it evaluates its own target.
+It then compares the completed partial target directly with current `master`.
+It publishes the following patch only when current `master` has an additional scoped change.
+If publication already succeeded, the run verifies that release and uses it as the comparison baseline.
+
+A retry for the superseded target may complete only that exact partial release.
+It cannot create a new immutable tag when the target is not current `master`.
+Manual major publication remains blocked until an automatic partial release is complete.
 
 To retry, rerun the failed workflow.
 Do not create tags or releases manually.
-Resolve a conflicting partial release before another publication.
+Resolve an unknown or conflicting partial state before another publication.

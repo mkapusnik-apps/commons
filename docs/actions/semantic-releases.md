@@ -66,14 +66,31 @@ Automatic v1 patches move only `v1`.
 ## Safety and retry behavior
 
 Patch and major publications share one concurrency group.
+GitHub may replace a pending manual-major run when a newer automatic run enters that group.
+The operator must re-dispatch the manual workflow against current `master` when this happens.
 The publisher creates immutable and fixed tags without force.
 It updates a floating major with a lease from a recognized earlier release.
 It rejects backward moves and unknown floating targets.
 
 The publisher creates a draft release before it moves the floating major.
 It publishes the draft only after all required tags identify the target.
-A retry resumes an exact partial publication for the same target and version.
-An unrelated incomplete release blocks publication.
+
+The automatic publisher accepts one exact incomplete next-patch tag.
+The partial target must contain a scoped change from the latest stable release.
+The GitHub release must be absent or draft.
+The floating major must identify the latest stable release or the partial target.
+
+If current `master` supersedes the partial target, its run completes the partial release first.
+It does not move the immutable tag.
+It then compares the recovered target tree directly with current `master`.
+An additional scoped change produces the following patch.
+No additional scoped change produces no second release.
+If the partial release became published before failure, the next run verifies it and continues from it.
+
+A retry of the superseded run may complete its exact partial release.
+It cannot start a release from a stale revision.
+Unknown, conflicting, multiple, or non-patch partial states fail closed.
+The manual major workflow does not recover an automatic partial release.
 
 ## History reset transition
 

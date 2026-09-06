@@ -185,10 +185,14 @@ async function releaseState(github, props) {
   return { immutable, releases, published, latest: published.at(-1) };
 }
 
-async function requireMaster(github, props, sha) {
+async function masterSha(github, props) {
   const master = await getRef(github, props, 'heads/master');
   if (!master) fail('refs/heads/master is missing');
-  const actual = await resolveCommit(github, props, master.object);
+  return resolveCommit(github, props, master.object);
+}
+
+async function requireMaster(github, props, sha) {
+  const actual = await masterSha(github, props);
   if (actual !== sha) fail(`Target ${sha} is not current master ${actual}`);
 }
 
@@ -232,12 +236,11 @@ async function moveFloating(github, props, target, sha, state) {
   const currentRelease = state.published.find((item) => item.major === target.major && item.sha === currentSha);
   if (!currentRelease) fail(`${tag} points to unrecognized revision ${currentSha}`);
   if (compareVersions(currentRelease, target) >= 0) fail(`Refusing to move ${tag} backward from ${currentRelease.tag} to ${target.tag}`);
-  const localHead = runGit(['rev-parse', 'HEAD']).trim();
-  if (localHead !== sha) fail(`Checked-out revision ${localHead} does not match target ${sha}`);
+  runGit(['fetch', '--no-tags', 'origin', `refs/tags/${target.tag}:refs/release-target/${target.tag}`]);
   try {
     childProcess.execFileSync('git', [
       'push', '--porcelain', `--force-with-lease=refs/tags/${tag}:${currentSha}`,
-      'origin', `HEAD:refs/tags/${tag}`,
+      'origin', `${sha}:refs/tags/${tag}`,
     ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (error) {
     const current = await getRef(github, props, `tags/${tag}`);
@@ -262,6 +265,63 @@ async function verifyCompleted(github, props, target) {
   }
 }
 
+function nextPatch(previous) {
+  return {
+    major: previous.major,
+    minor: previous.minor,
+    patch: previous.patch + 1,
+  };
+}
+
+async function inspectPartialPatch(github, props, state) {
+  const incomplete = state.immutable.filter((item) => (
+    !state.published.some((published) => published.tag === item.tag)
+  ));
+  if (incomplete.length === 0) return null;
+  if (incomplete.length !== 1) fail(`Multiple incomplete releases exist: ${incomplete.map((item) => item.tag).join(', ')}`);
+
+  const partial = incomplete[0];
+  const expected = { ...nextPatch(state.latest), tag: formatVersion(nextPatch(state.latest)) };
+  if (partial.tag !== expected.tag) {
+    fail(`Incomplete ${partial.tag} is not the next patch ${expected.tag}`);
+  }
+  const scope = await exposedContentChanged(github, props, state.latest.sha, partial.sha);
+  if (!scope.changed) fail(`Incomplete ${partial.tag} has no scoped change from ${state.latest.tag}`);
+
+  const release = state.releases.get(partial.tag) || null;
+  if (release && !release.draft) fail(`Incomplete ${partial.tag} has a non-draft release`);
+  const floating = await getRef(github, props, `tags/v${partial.major}`);
+  if (!floating) fail(`Floating tag v${partial.major} is missing`);
+  const floatingSha = await resolveCommit(github, props, floating.object);
+  if (floatingSha !== state.latest.sha && floatingSha !== partial.sha) {
+    fail(`Floating tag v${partial.major} points to unknown partial state ${floatingSha}`);
+  }
+  if (floatingSha === partial.sha && !release) {
+    fail(`Floating tag v${partial.major} moved before draft ${partial.tag} exists`);
+  }
+  return { ...partial, release, changedPaths: scope.changedPaths };
+}
+
+async function finishPublication(github, props, core, target, mode) {
+  let state = await releaseState(github, props);
+  const immutable = state.immutable.find((item) => item.tag === target.tag);
+  if (!immutable || immutable.sha !== target.sha) fail(`${target.tag} is not immutable at ${target.sha}`);
+  const release = await ensureDraft(github, props, state, target.tag, target.sha, mode);
+  if (!release.draft) {
+    await verifyCompleted(github, props, target);
+    core.info(`revision=${target.sha} outcome=already-published version=${target.tag}`);
+    return;
+  }
+  state = await releaseState(github, props);
+  await moveFloating(github, props, target, target.sha, state);
+  await github.rest.repos.updateRelease({
+    ...props, release_id: release.id, tag_name: target.tag, target_commitish: target.sha,
+    name: target.tag, body: release.body, draft: false, prerelease: false,
+  });
+  await verifyCompleted(github, props, target);
+  core.info(`revision=${target.sha} outcome=published version=${target.tag}`);
+}
+
 async function publishTarget({ github, context, core, mode }) {
   const sha = mode === 'major' ? (process.env.RELEASE_TARGET_SHA || '').trim() : context.sha;
   const props = { owner: context.repo.owner, repo: context.repo.repo };
@@ -275,8 +335,6 @@ async function publishTarget({ github, context, core, mode }) {
   } else if (context.eventName !== 'push' || context.ref !== 'refs/heads/master') {
     fail('Patch publication requires a push to master');
   }
-  await requireMaster(github, props, sha);
-
   let state = await releaseState(github, props);
   const alreadyPublished = state.published.filter((item) => item.sha === sha).at(-1);
   const completedMajorRetry = mode === 'major' && alreadyPublished
@@ -289,46 +347,59 @@ async function publishTarget({ github, context, core, mode }) {
     return;
   }
 
-  const version = mode === 'major'
-    ? { major: state.latest.major + 1, minor: 0, patch: 0 }
-    : { major: state.latest.major, minor: state.latest.minor, patch: state.latest.patch + 1 };
-  const target = { ...version, tag: formatVersion(version), sha };
-  const incomplete = state.immutable.filter((item) => !state.published.some((published) => published.tag === item.tag));
-  if (incomplete.some((item) => item.tag !== target.tag || item.sha !== sha)) {
-    fail(`Incomplete release ${incomplete[0].tag} at ${incomplete[0].sha} blocks publication`);
-  }
-
   if (mode === 'patch') {
+    const currentMaster = await masterSha(github, props);
+    const partial = await inspectPartialPatch(github, props, state);
+    if (sha !== currentMaster) {
+      if (!partial || partial.sha !== sha) {
+        fail(`Stale target ${sha} cannot start a publication; current master is ${currentMaster}`);
+      }
+      core.info(`revision=${sha} outcome=resuming-superseded-partial version=${partial.tag}`);
+      await finishPublication(github, props, core, partial, 'Recovered automatic patch');
+      return;
+    }
+
+    if (partial) {
+      core.info(`revision=${sha} outcome=recovering-partial partial=${partial.tag} partial-sha=${partial.sha}`);
+      await finishPublication(github, props, core, partial, 'Recovered automatic patch');
+      if (partial.sha === sha) return;
+      state = await releaseState(github, props);
+    }
+
+    await verifyCompleted(github, props, { ...state.latest, sha: state.latest.sha });
     const scope = await exposedContentChanged(github, props, state.latest.sha, sha);
-    if (!scope.changed && incomplete.length === 0) {
+    if (!scope.changed) {
       core.info(`revision=${sha} outcome=no-action-change baseline=${state.latest.tag}`);
       await core.summary.addHeading('Action release').addRaw(`No exposed action content changed from \`${state.latest.tag}\`.`).write();
       return;
     }
+    const version = nextPatch(state.latest);
+    const target = { ...version, tag: formatVersion(version), sha };
     core.info(`revision=${sha} outcome=patch version=${target.tag} changed=${scope.changedPaths.join(',')}`);
-  } else {
-    core.info(`revision=${sha} outcome=major version=${target.tag}`);
+    await createRef(github, props, target.tag, sha);
+    await finishPublication(github, props, core, target, 'Automatic patch');
+    await core.summary.addHeading('Action release').addTable([
+      [{ data: 'Revision', header: true }, sha],
+      [{ data: 'Version', header: true }, target.tag],
+      [{ data: 'Mode', header: true }, mode],
+    ]).write();
+    return;
   }
 
+  await requireMaster(github, props, sha);
+  const version = { major: state.latest.major + 1, minor: 0, patch: 0 };
+  const target = { ...version, tag: formatVersion(version), sha };
+  const incomplete = state.immutable.filter((item) => !state.published.some((published) => published.tag === item.tag));
+  if (incomplete.some((item) => item.tag !== target.tag || item.sha !== sha)) {
+    fail(`Incomplete release ${incomplete[0].tag} at ${incomplete[0].sha} blocks major publication`);
+  }
+  await verifyCompleted(github, props, { ...state.latest, sha: state.latest.sha });
+  core.info(`revision=${sha} outcome=major version=${target.tag}`);
   const conflict = state.immutable.find((item) => item.tag === target.tag && item.sha !== sha);
   if (conflict) fail(`${target.tag} already points to ${conflict.sha}`);
   await createRef(github, props, target.tag, sha);
-  if (mode === 'major') await createRef(github, props, `v${target.major}.0`, sha);
-  state = await releaseState(github, props);
-  const release = await ensureDraft(github, props, state, target.tag, sha, mode === 'major' ? 'Manual major' : 'Automatic patch');
-  if (!release.draft) {
-    await verifyCompleted(github, props, target);
-    core.info(`revision=${sha} outcome=already-published version=${target.tag}`);
-    return;
-  }
-  state = await releaseState(github, props);
-  await moveFloating(github, props, target, sha, state);
-  await github.rest.repos.updateRelease({
-    ...props, release_id: release.id, tag_name: target.tag, target_commitish: sha,
-    name: target.tag, body: release.body, draft: false, prerelease: false,
-  });
-  await verifyCompleted(github, props, target);
-  core.info(`revision=${sha} outcome=published version=${target.tag}`);
+  await createRef(github, props, `v${target.major}.0`, sha);
+  await finishPublication(github, props, core, target, 'Manual major');
   await core.summary.addHeading('Action release').addTable([
     [{ data: 'Revision', header: true }, sha],
     [{ data: 'Version', header: true }, target.tag],
