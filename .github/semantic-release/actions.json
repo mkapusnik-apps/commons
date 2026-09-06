@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "actionDirectories": [
     "git-ref",
     "pull-request",
@@ -7,5 +7,6 @@
     "tag",
     "tag-gate",
     "workflow-state"
-  ]
+  ],
+  "sharedPaths": []
 }

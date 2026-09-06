@@ -1,121 +1,83 @@
-# Automatic Semantic Releases
+# Shared Action Releases
 
 ## Purpose
 
-Consumers of the shared actions need immutable versions for reproducibility and floating major versions for compatible updates. The initial stable release bootstraps those references from canonical `master`; afterward, each qualifying push to `master` publishes one ordered semantic version without manual release scheduling.
+Consumers need immutable releases and convenient compatible references.
+The repository publishes patch releases automatically.
+An operator publishes a new major when compatibility requires it.
 
-## Qualifying publication
+## Published content
 
-- A push whose target is `refs/heads/master` qualifies for publication.
-- One push is one publication unit, including when the push contains multiple commits.
-- Tag events, release events, pushes to other branches, and manual scheduling do not create another publication.
-- Reprocessing the same pushed head revision resumes or confirms its existing publication; it does not allocate another version.
-- Closely spaced qualifying pushes are published in order. A later push must not overtake an earlier unpublished push.
-- Classification covers all repository changes since the latest completed immutable release in the pushed revision's `master` history. It does not require the push event's exact previous revision to have its own release. This ensures that activation gaps and previous failed publications cannot cause changes to be omitted.
+`.github/semantic-release/actions.json` is the canonical release scope.
+Each `actionDirectories` entry identifies one exposed root-level action.
+Every file and Git object mode below those directories is published content.
 
-## Initial stable bootstrap
+`sharedPaths` identifies repository runtime dependencies shared by published actions.
+The list is empty because no current action loads a shared repository runtime dependency.
 
-The activation baseline is canonical `master` commit `1a26ddc0defdd944902e58f1e428548a4ceca90e`. Create `v1`, `v1.0`, and `v1.0.0` at exactly that revision, then publish a stable, non-draft GitHub release for `v1.0.0` at the same revision before enabling the automation. This bootstrap identifies the existing reviewed shared-action implementation; it does not claim that the issue #28 automation is active at the bootstrap revision.
+The publisher compares the union of the scope at the latest release and the scope at the target.
+This comparison detects additions, removals, content changes, and mode changes.
+It does not include workflows, release automation, declarations, or documentation outside an action directory.
 
-The first automated publication uses this completed baseline even when commits between the baseline and the first qualifying pushed head have no immutable release. It publishes the pushed head once and classifies the complete baseline-to-head change set.
+## Automatic patches
 
-The three initial references have distinct compatibility contracts:
+Every push to `master` starts the automatic publisher.
+The publisher finds the highest published stable `vMAJOR.MINOR.PATCH` release.
+It compares scoped Git tree entries at that release and at the pushed revision.
+The commits do not need an ancestry relationship.
 
-- `v1.0.0` is the immutable semantic-version tag and must never move.
-- `v1.0` is a fixed minor-series reference for the initial stable release and must never move.
-- `v1` is the floating major reference and moves forward to the latest successfully published compatible v1 release.
+Identical scoped content produces a successful no-op.
+Changed scoped content produces exactly `vMAJOR.MINOR.(PATCH+1)`.
+The release and immutable tag identify the pushed revision.
+The compatible floating `vMAJOR` tag moves to that revision.
 
-## 2026 history reset bridge
+The publisher does not infer API changes.
+Pull requests do not include release declarations.
+An incompatible change must use the manual major workflow after merge.
+The automatic patch still applies when that merge changes scoped content.
+The manual major then creates a new compatibility line at current `master`.
 
-The repository history reset created root commit `43b3c2c240d706eddb4801d637c108502d49f279`. Its tree is identical to historical tip `7e4573b0f9e0d81262d4a0435b2dbfa735181452`. Both commits use tree `003b409091678825a815b966442919c8a38ef35d`.
+## Manual majors
 
-The one-time bootstrap publishes patch release `v1.0.4` at the verified current `master` revision. It bridges the completed `v1.0.3` release at `17556b1efbed0bceffc8d3246bbc06fb8cbaef71` into the reset history. It does not change historical immutable releases or fixed `v1.0`.
+An operator dispatches `Publish Major Release` from current `master`.
+The operator supplies the full current `master` SHA.
+The confirmation must be `PUBLISH NEXT MAJOR AT <target_sha>`.
 
-The workflow requires the protected `release-baseline-reset-2026` Environment, which must require an independent reviewer, prevent self-review, and allow deployments only from `master`. An operator must supply the full current `master` SHA and the fixed confirmation phrase. The workflow determines the version from the expiring authorization manifest.
+The workflow derives `N+1` from the highest published stable major `N`.
+It publishes immutable `v(N+1).0.0` at the target.
+It creates `v(N+1).0` as a fixed reference to that initial release.
+It creates `v(N+1)` as the floating compatible reference for the new major.
 
-The bootstrap validates all release resources before each change. It accepts only the initial state, one of its ordered partial states, or the complete state. A retry resumes an exact partial state. A conflict stops all later changes.
+The operator cannot select an arbitrary version.
+The workflow does not use a GitHub Environment.
+Publishing a new major does not move an earlier floating major.
 
-The authorization expires at `2026-09-26T23:59:59Z`. After expiry, the workflow can complete an exact partial publication but cannot start a new publication. The published release body contains the authorization and workflow audit metadata.
+## Compatibility references
 
-Remove the temporary bootstrap workflow after `v1.0.4` is complete. Retain the manifest as the authorization record.
+- `vMAJOR.MINOR.PATCH` semantic tags are immutable.
+- `vN.0` identifies the initial release of major `vN` and never moves.
+- `vN` moves forward to the highest published release in major `vN`.
+- A full commit SHA gives consumers an immutable source reference.
+- Consumers must not use `master` as a production version.
 
-## Version classification
+The existing `v1.0` tag remains fixed at `v1.0.0`.
+Automatic v1 patches move only `v1`.
 
-Starting from the preceding immutable version `vX.Y.Z`, evaluate the following rules in order and use the first match:
+## Safety and retry behavior
 
-1. **Major:** if the public API of any published shared action changes, publish `v(X+1).0.0`.
-2. **Minor:** otherwise, if changes affect two or more distinct published shared-action directories, publish `vX.(Y+1).0`.
-3. **Patch:** otherwise, publish `vX.Y.(Z+1)`.
+Patch and major publications share one concurrency group.
+The publisher creates immutable and fixed tags without force.
+It updates a floating major with a lease from a recognized earlier release.
+It rejects backward moves and unknown floating targets.
 
-Consequently, a non-API change in exactly one action directory is a patch, as is a change outside all action directories. Multiple files in one action directory still count as one affected action. A major change takes precedence regardless of how many action directories are affected.
+The publisher creates a draft release before it moves the floating major.
+It publishes the draft only after all required tags identify the target.
+A retry resumes an exact partial publication for the same target and version.
+An unrelated incomplete release blocks publication.
 
-The version-controlled shared-action catalog defines which directories count as published actions. Classification uses the complete change set for the publication, not commit-message wording or the number of commits.
+## History reset transition
 
-## Public API classification
-
-The public API includes:
-
-- consumer-facing action paths;
-- inputs and outputs, including requiredness and defaults;
-- supported consumer-visible runtime contract;
-- documented externally observable behavior, outcomes, and failure behavior.
-
-Removing or renaming an action, or changing its consumer path, is an API change. Any other change that alters this public contract is also an API change.
-
-API and affected-action classification must be deterministic, version-controlled, and reproducible for the same repository change. When a behavioral API change cannot be identified unambiguously from the changed contract, the change must carry a validated, machine-readable classification. Missing, invalid, or contradictory classification must block publication rather than silently select a lower version.
-
-## Completed publication
-
-A publication is complete only when all of the following identify the pushed head revision:
-
-- a newly allocated immutable `vMAJOR.MINOR.PATCH` tag;
-- the GitHub release corresponding to that immutable tag;
-- the floating `vMAJOR` tag for the newly published major.
-
-An immutable semantic-version tag is never moved, reused, or allocated to another revision. A floating major tag moves to the latest successfully published revision in its own major. Publishing a new major creates or updates that major's floating tag without moving floating tags for earlier majors.
-
-The fixed bootstrap reference `v1.0` is not part of later automatic publications and remains at `v1.0.0`.
-
-## Retry, conflict, and failure behavior
-
-- Retrying the same revision is idempotent, including after only part of its publication completed.
-- Existing publication resources for that revision are reused or completed where safe, without allocating a later version.
-- A retry resumes the same version when the immutable tag or floating major tag already moved to the revision but the GitHub release was not published. It completes the missing release instead of treating that partial version as the predecessor for a new allocation.
-- A partial publication is not a completed predecessor for any later revision. Later qualifying revisions remain blocked until the earlier publication is completed or its conflict is resolved.
-- If an expected immutable version already identifies a different revision, publication fails as a conflict and does not move that tag.
-- A floating-tag update uses the observed ref SHA as an atomic lease. A concurrent change rejects the update instead of overwriting the new ref.
-- A completed-revision no-op must be a forward push to the latest completed publication. An older published revision remains invalid.
-- A run must not report successful publication while the immutable tag, release, and applicable floating tag are inconsistent.
-- Failures identify the affected revision and publication outcome clearly enough for a retry; a retry must not silently change the previously determined classification.
-- Overlapping publications must not create duplicate, skipped, reversed, or conflicting versions.
-
-## Out of scope
-
-- Updating downstream repositories to consume a newly published version.
-- Pre-release channels, manual release scheduling, or manual version selection.
-- Defining release-note content beyond creating the corresponding GitHub release.
-- Changing the behavior or public interface of an individual shared action as part of release automation.
-
-## Acceptance criteria
-
-- **HP-28-AC-01:** Each qualifying push to `master` produces exactly one publication for its pushed head revision; a multi-commit push still produces only one publication, and non-qualifying events produce none.
-- **HP-28-AC-02:** From `vX.Y.Z`, an API change produces `v(X+1).0.0`, including when the same change affects multiple action directories.
-- **HP-28-AC-03:** From `vX.Y.Z`, non-API changes affecting at least two distinct published action directories produce `vX.(Y+1).0`.
-- **HP-28-AC-04:** From `vX.Y.Z`, a non-API change affecting exactly one published action directory produces `vX.Y.(Z+1)`.
-- **HP-28-AC-05:** From `vX.Y.Z`, a change affecting no published action directory produces `vX.Y.(Z+1)`.
-- **HP-28-AC-06:** Classification considers the complete change set since the latest completed immutable release in the pushed head's `master` history and follows major-before-minor-before-patch precedence; the event's exact previous revision need not have a release.
-- **HP-28-AC-07:** A completed publication's immutable tag, GitHub release, and applicable floating major tag all identify the pushed head revision.
-- **HP-28-AC-08:** Existing immutable tags never move, and publishing a new major does not move floating tags for earlier majors.
-- **HP-28-AC-09:** Reprocessing a revision, including after a partial failure, completes or confirms the same version without creating another version or changing its classification. This includes a failure after the floating major tag moved but before the GitHub release was published.
-- **HP-28-AC-10:** Closely spaced qualifying pushes publish in order without duplicate, skipped, reversed, or conflicting versions.
-- **HP-28-AC-11:** API-change and affected-action classification are deterministic and version-controlled; absent, invalid, or ambiguous required classification blocks publication.
-- **HP-28-AC-12:** Publication failures visibly identify the affected revision and failed outcome, do not report an inconsistent publication as successful, and allow a safe retry.
-- **HP-28-AC-13:** Contributor documentation explains the qualifying event, version precedence, public API boundary, affected-action counting, declaration requirement, and retry behavior.
-- **HP-28-AC-14:** Before automation is enabled, the bootstrap creates `v1`, `v1.0`, and `v1.0.0` at canonical `master` SHA `1a26ddc0defdd944902e58f1e428548a4ceca90e`.
-- **HP-28-AC-15:** `v1.0.0` is immutable, `v1.0` remains fixed at the initial stable release, and only `v1` moves forward to later compatible v1 publications.
-- **HP-28-AC-16:** The bootstrap publishes a stable, non-draft GitHub release for `v1.0.0` whose tag identifies the captured canonical `master` SHA.
-- **HP-28-AC-17:** When unreleased commits exist between the bootstrap and the first qualifying pushed head, the first automated publication succeeds from the bootstrap baseline and publishes one correctly classified version for that head.
-- **HP-28-AC-18:** A partial publication is never used as the predecessor of a later pushed revision; sequential and concurrent pushes wait for each earlier publication to complete rather than absorbing, skipping, or reversing it.
-- **HP-28-AC-19:** The history reset bootstrap publishes only `v1.0.4` at the verified current `master` SHA after it validates the exact tree bridge and prior release state.
-- **HP-28-AC-20:** The history reset bootstrap is idempotent, rejects conflicting partial states, preserves historical immutable tags and fixed `v1.0`, and records audit metadata.
-- **HP-28-AC-21:** Expiry blocks a new bootstrap publication but permits completion of an exact partial `v1.0.4` publication.
+The latest stable release is currently `v1.0.3`.
+Tree comparison does not require `v1.0.3` to be an ancestor of current `master`.
+Current `master` has an unreleased `setup-flutter/action.yml` change.
+The first `master` push running the new publisher therefore publishes the complete scoped target as `v1.0.4`, even when the activating commit changes only release automation.

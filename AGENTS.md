@@ -8,10 +8,10 @@ Repository for shared tools, GitHub Actions, and their specifications:
 
 ## Branching Strategy
 
-GitHub Actions validates pull requests and publishes one semantic release for
-every qualifying push to `master`. Every pull request must add one
-machine-readable release declaration. Trigger, ordering, declaration, retry,
-and troubleshooting details are in [.github/workflows.md](.github/workflows.md).
+GitHub Actions validates action metadata. A `master` push publishes the next
+patch when exposed action content changed. An operator may publish the next
+major from current `master`. Release scope, retry, and troubleshooting details
+are in [.github/workflows.md](.github/workflows.md).
 
 ## Shared Action Releases
 
