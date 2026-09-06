@@ -1,168 +1,130 @@
-# Repository Workflow
+# Repository Workflows
 
-This repository uses `master` as the canonical base branch for pull requests.
+This repository uses `master` as the canonical branch.
 
-## CI validation
+## Action metadata validation
 
-The action metadata validation is split by trigger into `Validate GitHub Actions
-(Pull Request)` and `Validate GitHub Actions (Push)`. Both workflows are limited
-to standalone action metadata matching `*/action.yml` in root-level action directories. Changes
-outside that path, including changes under `.github/workflows/`, do not trigger
-either workflow and are not included in their validation scope.
+`Validate GitHub Actions (Pull Request)` runs when a pull request to `master` changes `*/action.yml`.
+It validates YAML syntax.
 
-Pull requests targeting `master` run YAML syntax validation only. The
-`GrantBirki/json-yaml-validate@v5` action parses the matching metadata files and
-fails when their YAML is invalid. It does not apply the action metadata schema
-on pull requests. Gitignore processing is disabled so an explicitly matched
-metadata file cannot be skipped by `.gitignore`, and multiple YAML documents
-remain allowed.
+`Validate GitHub Actions (Push)` runs when a push to `master` changes `*/action.yml`.
+It validates action metadata against the pinned SchemaStore schema.
 
-Each job first requires at least one regular file to match the metadata glob.
-This is a fail-closed scope guard: version 5 of the validator falls back to
-recursively discovering YAML from `base_dir` when its explicit `files` input has
-no matches. Without the guard, deleting all standalone action metadata could
-make either action inspect unrelated YAML, including workflow files.
+Both workflows have `contents: read` permission.
+They require no secret and publish no artifact.
 
-Pushes to `master` run schema validation only. The push workflow also uses
-`GrantBirki/json-yaml-validate@v5`, treating the matching YAML files as JSON and
-validating them with the draft-07 SchemaStore `github-action.json` schema.
-`actions/checkout@v7` checks out that schema locally from immutable SchemaStore
-commit `d9d98e69894ebd7a50965dc58d61951e9d7f23a7`, so validation does not change
-when the upstream schema changes. This replaces
-`dsanders11/json-schema-validate-action`: that action does not publish a stable
-major tag, so it cannot satisfy the repository's `owner/action@vN` convention.
-Gitignore processing is disabled and multiple YAML documents remain allowed.
-AJV strict mode is disabled because its strict type checks reject constructs in
-the pinned draft-07 schema before metadata validation can run; the schema itself
-remains fully applied to each YAML document.
+If validation fails, inspect the named `action.yml` file.
+Workflow-only changes require static review because they do not start these workflows.
 
-The workflows require no repository secrets, have only `contents: read`
-permission, and publish no artifacts. If a pull request check fails, inspect the
-YAML syntax reported for the named action metadata file. If the push check
-fails, inspect the schema validation path and compare the metadata with GitHub's
-action metadata syntax. Workflow-only changes require separate static review
-because they intentionally do not trigger these action-metadata workflows.
+## Release scope
 
-## Semantic release declaration validation
+`.github/semantic-release/actions.json` defines the exact published content scope.
+`actionDirectories` lists the root-level exposed action directories.
+All files and Git object modes below each listed directory affect published behavior or metadata.
+`sharedPaths` lists runtime files or directories used by more than one published action.
+It is currently empty because the actions have no shared repository runtime dependency.
 
-`Validate Semantic Release (Pull Request)` runs for every pull request targeting
-`master`. Its `Validate release declaration` job compares the pull request base
-and head with the same version-controlled classification rules used by the
-publisher. It has `contents: read` permission, persists no checkout credential,
-and publishes no artifact.
+The scope file must list items in lexical order.
+Each action directory must contain `action.yml`.
+Add a shared runtime dependency to `sharedPaths` before an action uses it.
 
-Every pull request must add an append-only JSON file under
-`.github/semantic-release/declarations/`. Use a unique lowercase slug for the
-filename and this exact schema:
+Pull requests do not require a release declaration.
+The workflows do not infer API changes or major versions.
+The automatic publisher does not suppress a patch for an incompatible change.
 
-```json
-{
-  "schema": 1,
-  "apiChange": false
-}
-```
+## Automatic patch publication
 
-Set `apiChange` to `true` when any changed action has a consumer-facing API
-change. The API boundary includes its path, inputs, outputs, requiredness,
-defaults, consumer-visible runtime contract, and documented externally
-observable behavior or failure behavior. Removing or renaming an action is an
-API change. Declarations cannot be edited or deleted after publication. A
-missing declaration, an edited or deleted declaration, an invalid schema, or a
-range whose declarations are otherwise unusable fails closed. A multi-commit
-publication range may contain multiple new declarations; they are all validated
-and any `apiChange: true` declaration gives the whole publication major
-precedence. A registry change with no `true` declaration also fails closed.
-Before delivery, contributors can run the same local classifier against the
-pull request base with:
+`Publish Semantic Release` runs after every push to `master`.
+It has `contents: write` permission.
+It requires no secret, Environment, or artifact.
 
-```sh
-node .github/scripts/semantic-release.js validate-worktree <base-commit-sha>
-```
+The publisher finds the highest stable `vMAJOR.MINOR.PATCH` GitHub release.
+It reads the Git trees for that tag and the pushed revision.
+It compares only the union of the release and target scopes.
+It does not compare commit ancestry.
 
-`.github/semantic-release/actions.json` is the canonical catalog used to count
-affected action directories. It must remain sorted and each entry must identify
-a root-level directory containing `action.yml`. Multiple files in one registered
-directory count once. A non-API change in at least two registered directories is
-minor; a non-API change in one or zero is patch; `apiChange: true` is always
-major. Update the catalog and declare `apiChange: true` when adding, removing,
-renaming, or moving a published action.
+If the release and target scoped content is identical, the workflow succeeds without a release.
+If scoped content differs, the workflow publishes `vMAJOR.MINOR.(PATCH+1)` at the pushed revision.
+It then moves `vMAJOR` forward to that revision.
+It never moves `vMAJOR.MINOR`.
 
-## Automatic publication
+The tree comparison tolerates the 2026 history reset.
+It also detects added or removed actions through the union of both scope versions.
 
-`Publish Semantic Release` runs only for branch push events targeting `master`.
-The `Publish semantic release` job treats the event's pushed head as one
-publication unit, so a multi-commit push still allocates one version. Tag,
-release, pull-request, other-branch, and scheduled events do not trigger it.
-It needs only `contents: write` to create refs and GitHub releases and publishes
-no workflow artifact.
+## Manual major publication
 
-The publisher compares the complete repository trees from the latest completed
-immutable release in the pushed head's `master` history to the pushed head.
-Classification is major before minor before patch. The initial baseline is
-`v1.0.0` at `1a26ddc0defdd944902e58f1e428548a4ceca90e`. The 2026 history reset
-requires the one-time `v1.0.4` bridge described below. Later publications use
-that completed release as the reset history baseline. They do not move `v1.0`.
+`Publish Major Release` uses `workflow_dispatch` only.
+The operator must dispatch the workflow from current `master`.
+The operator must enter the full current `master` SHA as `target_sha`.
+The operator must enter `PUBLISH NEXT MAJOR AT <target_sha>` as `confirmation`.
 
-Publication uses an immutable version tag, a draft release, and the applicable
-floating-major tag. It verifies both refs at the pushed SHA before publishing
-the draft, making the published GitHub release the durable completion marker.
-Immutable tags are create-only. A floating tag moves only forward within its
-own major, so a new major does not move older floating tags.
+The workflow derives the next major from the highest stable semantic release.
+The operator cannot select a version.
+It publishes `v(N+1).0.0` at the verified target.
+It creates fixed `v(N+1).0` and floating `v(N+1)` tags at the same revision.
+Each fixed `vN.0` tag identifies the first release of major `vN` and never moves.
+Earlier floating major tags do not move.
 
-The publisher re-reads release state before it moves a floating tag. It uses an
-atomic Git force-with-lease update against the observed SHA. The update fails if
-another publication changes the tag first. Checkout stores the job token only
-until its post-job credential cleanup so Git can perform this leased update.
+The workflow has `contents: write` permission.
+It requires no secret, Environment, or artifact.
 
-Runs do not use GitHub Actions concurrency groups because those groups can
-replace a pending run and do not guarantee FIFO ordering. After activation,
-each pushed revision waits for the exact preceding branch head to have a
-published immutable release. This predecessor barrier serializes closely spaced
-pushes. Concurrent retries for one revision converge on the same immutable tag
-and draft release. A later revision cannot use an immutable tag with a missing
-or draft release as its predecessor and cannot publish until that earlier
-revision's release is complete.
+A new manual publication starts only when `target_sha` is current `master`.
+The workflow checks the confirmation before it reads or changes release state.
 
-To retry, rerun the failed push workflow from GitHub Actions. Do not create tags
-or releases manually for that revision. The rerun reuses a matching immutable
-tag and draft release, or safely creates whichever one is missing, refuses
-conflicts, recomputes the same version-controlled classification, and never
-moves an immutable tag. If the floating major already points to the revision,
-the rerun accepts it only when the same immutable tag and stable draft release
-form a consistent in-progress publication; it then publishes that draft as the
-same version. Logs and the job summary include the full revision,
-classification/publication outcome, and version when allocated. Common
-blocking failures are a missing prerequisite release, a missing or ambiguous
-declaration, an invalid registry, an immutable-tag conflict, an inconsistent
-floating tag, or a predecessor that did not finish within the wait period.
+## Concurrency and retries
 
-## One-time release baseline reset
+Both publishers use the `semantic-release-publication` concurrency group.
+One publisher runs at a time.
+GitHub may replace an older pending run with a newer pending run.
+The newest pending run evaluates the complete scoped tree difference from the latest release.
+It therefore publishes the cumulative scoped tree when an older pending run is replaced.
+A newer automatic run may also replace a pending manual-major run.
+The operator must re-dispatch the manual workflow against current `master` when this happens.
 
-`Bootstrap Semantic Release Baseline` is a temporary manual workflow for the
-2026 history reset. An operator must dispatch it from `master` at the exact
-current `master` SHA. The operator must also enter
-`RESET RELEASE BASELINE TO V1.0.4`.
+The publisher creates immutable tags without force.
+It moves a floating major only from a recognized older release and uses a Git lease.
+It rejects immutable conflicts, unknown partial states, unknown floating targets, and backward floating moves.
 
-The `release-baseline-reset-2026` Environment must require an independent
-reviewer, prevent self-review, and allow deployments only from `master`. The
-workflow has only `contents: write` permission. It uses no secret and publishes
-no workflow artifact.
+An automatic run accepts one exact incomplete next-patch tag.
+The tag must contain a scoped change from the latest stable release.
+Its release must be absent or draft.
+Its floating major must identify either the latest stable release or the partial target.
 
-The workflow verifies the approved historical tip, root reset anchor, and their
-identical tree before it changes release state. It also verifies the completed
-`v1.0.3` release, fixed `v1.0`, current `master`, and all possible `v1.0.4`
-partial states. It then creates immutable `v1.0.4`, creates its draft release,
-moves `v1`, and publishes the release. The release body records the workflow
-run, actor, target, bridge, previous release, authorization, and expiry.
+A current `master` run completes that partial release before it evaluates its own target.
+It then compares the completed partial target directly with current `master`.
+It publishes the following patch only when current `master` has an additional scoped change.
+If publication already succeeded, the run verifies that release and uses it as the comparison baseline.
 
-A rerun completes an exact partial state or reports an exact completed state as
-a no-op. Any conflict fails closed. After `2026-09-26T23:59:59Z`, a run can only
-complete an existing exact partial state. It cannot start a new publication.
+A retry for the superseded target may complete only that exact partial release.
+It cannot create a new immutable tag when the target is not current `master`.
+Manual major publication remains blocked until an automatic partial release is complete.
 
-The bootstrap uses the same leased floating-tag update as the normal publisher.
-Two bootstrap runs can converge on the same target. A later publication cannot
-be replaced with the bootstrap target.
+### Manual major recovery
 
-After successful publication, the developer must remove the temporary workflow
-in a follow-up pull request. The developer should retain the expired manifest
-and release audit metadata as the authorization record.
+Rerun the original manual workflow when `master` advances after a partial major publication.
+The rerun retains the authorized target SHA and confirmation from the original dispatch.
+A new dispatch cannot select the stale target.
+
+The stale rerun derives the same next major from the latest completed release.
+It requires exactly one incomplete immutable tag for that version and target.
+The matching fixed tag can be absent or can identify that target.
+The draft can be absent or can remain a non-prerelease draft.
+The new floating major can be absent or can identify that target.
+
+Resources must follow the order immutable, fixed, draft, and floating.
+The rerun creates only missing later resources.
+It never rewrites an existing immutable or fixed tag.
+It creates the new floating major without force when that tag is missing.
+It accepts an existing floating major only at the authorized target.
+
+The automatic workflow does not complete a partial manual major.
+Existing GitHub state does not store sufficient dispatch authorization for that action.
+An arbitrary next-major tag is not authorization.
+
+After the manual rerun succeeds, rerun the automatic workflow for current `master`.
+It uses `v(N+1).0.0` as its completed baseline.
+It publishes `v(N+1).0.1` only when current `master` has an additional scoped change.
+
+To retry, rerun the failed workflow.
+Do not create tags or releases manually.
+Resolve an unknown or conflicting partial state before another publication.
