@@ -191,11 +191,6 @@ async function masterSha(github, props) {
   return resolveCommit(github, props, master.object);
 }
 
-async function requireMaster(github, props, sha) {
-  const actual = await masterSha(github, props);
-  if (actual !== sha) fail(`Target ${sha} is not current master ${actual}`);
-}
-
 async function createRef(github, props, tag, sha) {
   try {
     await github.rest.git.createRef({ ...props, ref: `refs/tags/${tag}`, sha });
@@ -273,6 +268,14 @@ function nextPatch(previous) {
   };
 }
 
+function nextMajor(previous) {
+  return {
+    major: previous.major + 1,
+    minor: 0,
+    patch: 0,
+  };
+}
+
 async function inspectPartialPatch(github, props, state) {
   const incomplete = state.immutable.filter((item) => (
     !state.published.some((published) => published.tag === item.tag)
@@ -300,6 +303,43 @@ async function inspectPartialPatch(github, props, state) {
     fail(`Floating tag v${partial.major} moved before draft ${partial.tag} exists`);
   }
   return { ...partial, release, changedPaths: scope.changedPaths };
+}
+
+async function inspectPartialMajor(github, props, state, targetSha) {
+  const version = nextMajor(state.latest);
+  const expected = { ...version, tag: formatVersion(version), sha: targetSha };
+  const incomplete = state.immutable.filter((item) => (
+    !state.published.some((published) => published.tag === item.tag)
+  ));
+  if (incomplete.length === 0) {
+    const [fixed, floating] = await Promise.all([
+      getRef(github, props, `tags/v${expected.major}.0`),
+      getRef(github, props, `tags/v${expected.major}`),
+    ]);
+    if (fixed || floating) fail(`Major v${expected.major} has compatibility refs without ${expected.tag}`);
+    return null;
+  }
+  if (incomplete.length !== 1) fail(`Multiple incomplete releases exist: ${incomplete.map((item) => item.tag).join(', ')}`);
+
+  const partial = incomplete[0];
+  if (partial.tag !== expected.tag || partial.sha !== targetSha) {
+    fail(`Incomplete ${partial.tag} at ${partial.sha} is not authorized target ${expected.tag} at ${targetSha}`);
+  }
+
+  const fixed = await getRef(github, props, `tags/v${expected.major}.0`);
+  const fixedSha = fixed ? await resolveCommit(github, props, fixed.object) : null;
+  if (fixedSha && fixedSha !== targetSha) fail(`Fixed tag v${expected.major}.0 points to ${fixedSha}, not ${targetSha}`);
+  const release = state.releases.get(expected.tag) || null;
+  if (release && !release.draft) fail(`Incomplete ${expected.tag} has a non-draft release`);
+  const floating = await getRef(github, props, `tags/v${expected.major}`);
+  const floatingSha = floating ? await resolveCommit(github, props, floating.object) : null;
+  if (floatingSha && floatingSha !== targetSha) {
+    fail(`Floating tag v${expected.major} points to ${floatingSha}, not ${targetSha}`);
+  }
+
+  if (!fixedSha && (release || floatingSha)) fail(`Manual partial ${expected.tag} has resources before its fixed tag`);
+  if (!release && floatingSha) fail(`Manual partial ${expected.tag} moved its floating tag before its draft exists`);
+  return { ...expected, release };
 }
 
 async function finishPublication(github, props, core, target, mode) {
@@ -386,18 +426,24 @@ async function publishTarget({ github, context, core, mode }) {
     return;
   }
 
-  await requireMaster(github, props, sha);
-  const version = { major: state.latest.major + 1, minor: 0, patch: 0 };
-  const target = { ...version, tag: formatVersion(version), sha };
-  const incomplete = state.immutable.filter((item) => !state.published.some((published) => published.tag === item.tag));
-  if (incomplete.some((item) => item.tag !== target.tag || item.sha !== sha)) {
-    fail(`Incomplete release ${incomplete[0].tag} at ${incomplete[0].sha} blocks major publication`);
+  const currentMaster = await masterSha(github, props);
+  const partial = await inspectPartialMajor(github, props, state, sha);
+  if (sha !== currentMaster && !partial) {
+    fail(`Stale manual target ${sha} cannot start a publication; current master is ${currentMaster}`);
   }
+  const version = nextMajor(state.latest);
+  const target = { ...version, tag: formatVersion(version), sha };
   await verifyCompleted(github, props, { ...state.latest, sha: state.latest.sha });
-  core.info(`revision=${sha} outcome=major version=${target.tag}`);
+  core.info(`revision=${sha} outcome=${partial ? 'resume-major' : 'major'} version=${target.tag}`);
   const conflict = state.immutable.find((item) => item.tag === target.tag && item.sha !== sha);
   if (conflict) fail(`${target.tag} already points to ${conflict.sha}`);
-  await createRef(github, props, target.tag, sha);
+  if (!partial) {
+    const masterBeforeCreate = await masterSha(github, props);
+    if (masterBeforeCreate !== sha) {
+      fail(`Target ${sha} stopped being current master before publication; current master is ${masterBeforeCreate}`);
+    }
+    await createRef(github, props, target.tag, sha);
+  }
   await createRef(github, props, `v${target.major}.0`, sha);
   await finishPublication(github, props, core, target, 'Manual major');
   await core.summary.addHeading('Action release').addTable([

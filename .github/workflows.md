@@ -68,6 +68,9 @@ Earlier floating major tags do not move.
 The workflow has `contents: write` permission.
 It requires no secret, Environment, or artifact.
 
+A new manual publication starts only when `target_sha` is current `master`.
+The workflow checks the confirmation before it reads or changes release state.
+
 ## Concurrency and retries
 
 Both publishers use the `semantic-release-publication` concurrency group.
@@ -95,6 +98,32 @@ If publication already succeeded, the run verifies that release and uses it as t
 A retry for the superseded target may complete only that exact partial release.
 It cannot create a new immutable tag when the target is not current `master`.
 Manual major publication remains blocked until an automatic partial release is complete.
+
+### Manual major recovery
+
+Rerun the original manual workflow when `master` advances after a partial major publication.
+The rerun retains the authorized target SHA and confirmation from the original dispatch.
+A new dispatch cannot select the stale target.
+
+The stale rerun derives the same next major from the latest completed release.
+It requires exactly one incomplete immutable tag for that version and target.
+The matching fixed tag can be absent or can identify that target.
+The draft can be absent or can remain a non-prerelease draft.
+The new floating major can be absent or can identify that target.
+
+Resources must follow the order immutable, fixed, draft, and floating.
+The rerun creates only missing later resources.
+It never rewrites an existing immutable or fixed tag.
+It creates the new floating major without force when that tag is missing.
+It accepts an existing floating major only at the authorized target.
+
+The automatic workflow does not complete a partial manual major.
+Existing GitHub state does not store sufficient dispatch authorization for that action.
+An arbitrary next-major tag is not authorization.
+
+After the manual rerun succeeds, rerun the automatic workflow for current `master`.
+It uses `v(N+1).0.0` as its completed baseline.
+It publishes `v(N+1).0.1` only when current `master` has an additional scoped change.
 
 To retry, rerun the failed workflow.
 Do not create tags or releases manually.

@@ -52,6 +52,10 @@ The operator cannot select an arbitrary version.
 The workflow does not use a GitHub Environment.
 Publishing a new major does not move an earlier floating major.
 
+A new dispatch can start publication only at current `master`.
+If `master` advances during publication, rerun the original workflow run.
+That rerun retains the confirmed target and can finish an exact partial major at the stale target.
+
 ## Compatibility references
 
 - `vMAJOR.MINOR.PATCH` semantic tags are immutable.
@@ -91,6 +95,34 @@ A retry of the superseded run may complete its exact partial release.
 It cannot start a release from a stale revision.
 Unknown, conflicting, multiple, or non-patch partial states fail closed.
 The manual major workflow does not recover an automatic partial release.
+
+## Manual major recovery
+
+The stale rerun derives the same `v(N+1).0.0` from the latest completed release.
+It requires one incomplete immutable `v(N+1).0.0` tag at its confirmed target.
+It validates fixed `v(N+1).0`, the draft release, and floating `v(N+1)` when they exist.
+
+The only accepted stages are:
+
+1. The immutable tag exists.
+2. The immutable and fixed tags exist.
+3. Both tags and the draft release exist.
+4. Both tags and the draft exist, and the floating major identifies the target.
+
+The rerun creates missing later resources and publishes the draft.
+It never rewrites an existing immutable or fixed tag.
+It creates the new floating major without force when that tag is missing.
+It accepts an existing floating major only at the confirmed target.
+A stale run with no exact partial fails before mutation.
+Multiple, reordered, conflicting, or fabricated resource states fail closed.
+
+The automatic workflow cannot recover this state because release resources do not prove the original dispatch authorization.
+The operator must rerun the original authorized manual workflow.
+After completion, the operator reruns the automatic workflow for current `master`.
+
+The automatic workflow compares current `master` directly with `v(N+1).0.0`.
+It publishes `v(N+1).0.1` when scoped content changed after the major target.
+It creates no release when scoped content is identical.
 
 ## History reset transition
 
