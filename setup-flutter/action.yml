@@ -26,12 +26,26 @@ runs:
         distribution: temurin
         java-version: '21'
 
+    - name: Normalize Android SDK packages
+      shell: bash
+      env:
+        ADDITIONAL_ANDROID_PACKAGES: ${{ inputs.additional-android-packages }}
+      run: |
+        packages='tools platform-tools platforms;android-36 build-tools;36.0.0'
+        additional_packages="$(
+          printf '%s' "$ADDITIONAL_ANDROID_PACKAGES" |
+            LC_ALL=C tr -s '[:space:]' ' ' |
+            sed 's/^ //; s/ $//'
+        )"
+        if [[ -n "$additional_packages" ]]; then
+          packages+=" $additional_packages"
+        fi
+        printf 'SETUP_FLUTTER_ANDROID_PACKAGES=%s\n' "$packages" >> "$GITHUB_ENV"
+
     - name: Setup Android SDK
       uses: android-actions/setup-android@v4
       with:
-        packages: >-
-          tools platform-tools platforms;android-36 build-tools;36.0.0
-          ${{ inputs.additional-android-packages }}
+        packages: ${{ env.SETUP_FLUTTER_ANDROID_PACKAGES }}
 
     - name: Setup Flutter SDK
       uses: subosito/flutter-action@v2
