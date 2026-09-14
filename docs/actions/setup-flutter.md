@@ -18,7 +18,7 @@ The action declares no outputs.
 
 ## Android SDK packages
 
-- **SF-ANDROID-PACKAGES-01:** The action must install `tools`, `platform-tools`, `platforms;android-36`, and `build-tools;36.0.0` for each consumer.
+- **SF-ANDROID-PACKAGES-01:** The action must install `platform-tools`, `platforms;android-36`, and `build-tools;36.0.0` for each consumer.
 - **SF-ANDROID-PACKAGES-02:** A consumer may request one or more additional Android SDK packages with `additional-android-packages`.
 - **SF-ANDROID-PACKAGES-03:** The action must add requested packages to the standard package set.
 - **SF-ANDROID-PACKAGES-04:** The action must install the standard package set and requested packages in one Android SDK setup operation.

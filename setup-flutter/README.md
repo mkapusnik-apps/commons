@@ -2,7 +2,7 @@
 
 Install the repository-standard Java, Android, and stable Flutter toolchains. Enable Flutter SDK and Pub caches under the runner temporary directory. Configure Flutter for non-interactive CI use.
 
-The action installs `tools`, `platform-tools`, `platforms;android-36`, and `build-tools;36.0.0`. It can install additional Android SDK packages in the same setup operation.
+The action installs `platform-tools`, `platforms;android-36`, and `build-tools;36.0.0`. It can install additional Android SDK packages in the same setup operation.
 
 ## Inputs
 
