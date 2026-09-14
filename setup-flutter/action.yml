@@ -31,7 +31,7 @@ runs:
       env:
         ADDITIONAL_ANDROID_PACKAGES: ${{ inputs.additional-android-packages }}
       run: |
-        packages='tools platform-tools platforms;android-36 build-tools;36.0.0'
+        packages='platform-tools platforms;android-36 build-tools;36.0.0'
         additional_packages="$(
           printf '%s' "$ADDITIONAL_ANDROID_PACKAGES" |
             LC_ALL=C tr -s '[:space:]' ' ' |
