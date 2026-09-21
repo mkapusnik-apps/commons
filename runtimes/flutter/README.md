@@ -188,7 +188,7 @@ authors own temporary files, containers, and images created for their checks.
 
 ## Developer-owned validation interface
 
-The workflow deliberately calls a not-yet-implemented hook:
+The workflow calls the implemented [candidate qualification hook](validation/README.md):
 
 ```text
 bash runtimes/flutter/validate.sh LIGHTWEIGHT_LOCAL_REF FULL_LOCAL_REF EVIDENCE_DIRECTORY
@@ -198,6 +198,10 @@ This hook is the integration point for developer-owned workload coverage. It
 must return nonzero on failure. A missing hook fails before registry login or any
 push; do not add a success stub, skip switch, or continue-on-error. The two images
 already exist in the local Docker daemon. The evidence directory exists.
+
+The guide documents workload coverage, download controls, evidence, and local
+tests. Implementing the hook does not qualify the images: successful candidate
+qualification, independent QA, and hosted publication evidence remain pending.
 
 The hook owns credential-free workload inputs, temporary containers, and cleanup.
 It must leave both image references intact and must not publish or retag them.

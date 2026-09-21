@@ -19,9 +19,9 @@ ENV FLUTTER_ROOT=/opt/flutter \
     PUB_CACHE=/cache/pub \
     GRADLE_USER_HOME=/cache/gradle \
     CI=true
-RUN bash /usr/local/lib/flutter-runtime/install.sh flutter \
-    && git config --system --add safe.directory /opt/flutter \
+RUN git config --system --add safe.directory /opt/flutter \
     && mkdir -p /home/runtime /cache/pub /cache/gradle /workspace \
+    && bash /usr/local/lib/flutter-runtime/install.sh flutter \
     && chmod -R a+rwX /opt/flutter /home/runtime /cache /workspace
 WORKDIR /workspace
 
