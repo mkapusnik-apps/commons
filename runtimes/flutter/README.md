@@ -57,6 +57,15 @@ Do not share writable caches or containers between mutually untrusted workloads.
 
 ## Source and tool inventory
 
+SDK installation removes only the verified `Windows_TemporaryKey.pfx` from the
+`flutter_template_images` Windows UWP template. This public upstream asset contains
+a test signing key and is outside the Linux/Android support set. Removal occurs in
+the installation layer, not a later cleanup layer. The sanitizer checks the exact
+asset hash and its identity in the checksum-verified official Pub archive. Version
+5.0.0 also has a fixed archive checksum from the provenance investigation. Later
+package versions can retain the same verified asset or omit it; changed content
+fails the build for review. The credential audit remains unchanged.
+
 The base is the Docker Official Image `ubuntu:24.04`, maintained by Canonical.
 Each run resolves its current digest. No suitable Flutter-team-maintained public
 runtime image was identified during discovery. Flutter comes directly from its

@@ -30,3 +30,6 @@ case "$1" in
     ;;
   *) exit 2 ;;
 esac
+
+# Remove the verified out-of-scope signing asset before this installation layer ends.
+python3 /usr/local/lib/flutter-runtime/sanitize-template-key.py
