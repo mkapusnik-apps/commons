@@ -2,6 +2,15 @@
 
 This repository uses `master` as the canonical branch.
 
+## Flutter runtime images
+
+`Refresh Flutter runtimes` builds weekly and on manual dispatch from `master`.
+Same-repository image PRs can publish validated unique candidates for review.
+Only a validated `master` refresh advances the two floating container tags.
+Container publication does not use the shared action release contract.
+See [Flutter runtime operations](../runtimes/flutter/README.md) for image references,
+permissions, validation integration, evidence, and partial-promotion recovery.
+
 ## Action metadata validation
 
 `Validate GitHub Actions (Pull Request)` runs when a pull request to `master` changes `*/action.yml`.
