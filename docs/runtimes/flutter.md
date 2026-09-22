@@ -75,6 +75,29 @@ Each criterion below verifies the linked requirements; it does not define a sepa
 | FR-AC-06 | FR-BASE-01 through FR-BASE-06, FR-DOCS-02, FR-DOCS-04 | Documentation and build provenance identify the base, official Flutter source, selection rationale, update policy, architecture, Android tool policy, included versions, and remaining first-run downloads. |
 | FR-AC-07 | FR-RELEASE-09 through FR-RELEASE-15 | Controlled failure results show that a failed candidate build or check leaves working floating references unchanged and previous variants available; promotion results and recovery documentation identify nontransactional behavior and never advertise an unvalidated candidate. |
 
+### Review readiness and operational acceptance
+
+Review readiness and final operational acceptance are separate gates. Review readiness does not authorize merge or production publication.
+
+- **FR-GATE-01:** Review readiness must include validated, publicly pullable immutable candidates for both variants, with evidence tied to the implementation checkpoint and image digests.
+- **FR-GATE-02:** Review readiness must include the applicable workload, non-root, documentation, provenance, and measurement evidence for FR-AC-03 through FR-AC-06 and FR-EVIDENCE-01 through FR-EVIDENCE-03.
+- **FR-GATE-03:** Review readiness must include a controlled isolated rehearsal of the publication validation gate, with the failure condition and reference state recorded before and after the attempt.
+- **FR-GATE-04:** Review readiness must identify unobserved operational criteria as pending, with an evidence plan for completion after default-branch registration.
+- **FR-GATE-05:** Missing default-branch-only observations must not, by themselves, block review readiness.
+- **FR-GATE-06:** Final operational acceptance must satisfy all FR-AC criteria with evidence for the deployed publication behavior.
+
+For FR-GATE-03, an absent-candidate rejection that leaves isolated references unchanged can demonstrate the bounded rejection path. It does not demonstrate preservation of existing working production floating references or recovery from partial promotion. A rehearsal must not require mutation of working production references.
+
+The following observations remain pending until operational evidence is available:
+
+| Criterion | Operational evidence still required |
+| --- | --- |
+| FR-AC-01 | Public pulls from both advertised production floating references and identification of their immutable publication pair. |
+| FR-AC-02 | Hosted scheduled and manual refresh results, including a refresh that rebuilds both variants when the resolved Flutter release is unchanged. |
+| FR-AC-07 | Failure evidence that starts with existing working references and shows their preservation and continued availability; hosted promotion outcomes and documented partial-promotion recovery. |
+
+An authorized isolated hosted rehearsal of the deployed publication behavior may supply failure and partial-promotion evidence without disrupting consumer references. Such evidence must identify the behavior exercised and its correspondence to the deployed publication path. Absent production references or a successful candidate build alone cannot satisfy these operational observations. This gate distinction does not require a destructive production failure or change the nontransactional promotion contract.
+
 ### Evidence and measurements
 
 - **FR-EVIDENCE-01:** Verification must record image build time and representative fresh-container startup and check times.
