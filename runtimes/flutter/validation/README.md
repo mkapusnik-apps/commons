@@ -89,8 +89,11 @@ Content assessment covers credential/key candidates under `/root`, `/home`, `/ca
 `/workspace`, `/tmp`, `/opt`, `/usr`, `/etc`, and `/var`, plus image environment names
 and unexpected workspace state. SDK sources, system CMake templates, and Android
 CMake/NDK installations are included; virtual filesystems are not scanned. Individual
-certificate/key links are resolved with inode deduplication, without recursive
-directory-link traversal. Read errors fail the gate instead of silently hiding paths.
+certificate/key links are resolved with deduplication by inode and equivalent
+inspection class, without recursive directory-link traversal. Source aliases never
+suppress binary-store/key checks; oversized source aliases are not marked inspected.
+Credential-name findings remain per path even when another alias was accepted.
+Read errors fail the gate instead of silently hiding paths.
 
 The audit detects PKCS#12 private-key bags, Java private/secret-key entries, PEM
 private keys and DER private-key files. Certificate-only PKCS#12/Java trust stores,

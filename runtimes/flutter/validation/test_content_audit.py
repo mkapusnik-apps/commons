@@ -55,6 +55,18 @@ class ContentAuditTests(unittest.TestCase):
     def report(self):
         return content_audit.inspect_credentials((self.root,))
 
+    def ordered_report(self):
+        walk = content_audit.os.walk
+
+        def ordered(*args, **kwargs):
+            for directory, directories, names in walk(*args, **kwargs):
+                # Force source/certificate aliases before sensitive filenames,
+                # independently of filesystem insertion/enumeration order.
+                yield directory, directories, sorted(names, key=lambda name: (not name.startswith("a-"), name))
+
+        with patch.object(content_audit.os, "walk", side_effect=ordered):
+            return self.report()
+
     def store(self, entries, magic=0xFEEDFEED):
         def utf(value):
             return struct.pack(">H", len(value)) + value
@@ -194,6 +206,52 @@ class ContentAuditTests(unittest.TestCase):
         (self.root / "opt/sdk/loop").symlink_to(self.root / "opt", target_is_directory=True)
         key.with_name("dangling.pem").symlink_to(key.with_name("absent"))
         self.assertEqual(len(self.report()["findings"]), 1)
+
+    def test_source_alias_before_binary_store_cannot_suppress_key_inspection(self):
+        key = self.install("private.pfx", "private.pfx")
+        alias = self.root / "a-source.txt"
+        for kind in ("symlink", "hardlink"):
+            with self.subTest(kind=kind):
+                if kind == "symlink":
+                    alias.symlink_to(key)
+                else:
+                    alias.hardlink_to(key)
+                report = self.ordered_report()
+                alias.unlink()
+                self.assertEqual([finding["path"] for finding in report["findings"]], [str(key)])
+                self.assertEqual(report["findings"][0]["reason"], "PKCS#12 private-key bag")
+                self.assertEqual(report["candidate_files_inspected"], 2)
+
+    def test_oversized_source_alias_is_not_marked_as_inspected(self):
+        key = self.install("private.pfx", "private.pfx")
+        (self.root / "a-source.txt").symlink_to(key)
+        with patch.object(content_audit, "SOURCE_MAX_BYTES", 1):
+            report = self.ordered_report()
+        self.assertEqual([finding["path"] for finding in report["findings"]], [str(key)])
+        self.assertEqual(report["source_files_over_limit"], 1)
+        self.assertEqual(report["candidate_files_inspected"], 1)
+
+    def test_credential_name_aliases_are_preserved_after_certificate_inspection(self):
+        certificate = self.install("a-certificate.pem", "cert.pem")
+        aliases = [self.root / name for name in (".netrc", "credentials.json", "subdir/.netrc")]
+        for alias in aliases:
+            alias.parent.mkdir(parents=True, exist_ok=True)
+            alias.hardlink_to(certificate)
+        report = self.ordered_report()
+        self.assertEqual({finding["path"] for finding in report["findings"]}, {str(alias) for alias in aliases})
+        self.assertTrue(all(finding["reason"] == "credential configuration file" for finding in report["findings"]))
+        self.assertEqual(report["candidate_files_inspected"], 4)
+
+    def test_certificate_aliases_only_deduplicate_equivalent_inspection_classes(self):
+        source_alias = self.install("a-source.txt", "cert.pem")
+        certificate = self.root / "ca.pem"
+        certificate.symlink_to(source_alias)
+        (self.root / "duplicate.crt").hardlink_to(source_alias)
+        with patch.object(content_audit, "classify_key_file", wraps=content_audit.classify_key_file) as classify:
+            report = self.ordered_report()
+        self.assertEqual(report["findings"], [])
+        self.assertEqual(report["candidate_files_inspected"], 2)
+        classify.assert_called_once_with(certificate)
 
     def test_original_credential_configuration_detection_preserved(self):
         path = self.root / "home/runtime/.netrc"

@@ -159,14 +159,25 @@ def inspect_credentials(roots=ROOTS):
                 file_stat = path.stat()  # Resolve individual certificate links, not directory links.
                 if not stat.S_ISREG(file_stat.st_mode):
                     continue
-                identity = (file_stat.st_dev, file_stat.st_ino)
-                if identity in seen:
-                    continue
-                seen.add(identity)
                 if not candidate:
                     if file_stat.st_size > SOURCE_MAX_BYTES:
                         source_over_limit += 1
                         continue
+                    inspection_class = ("bounded-source-pem",)
+                elif credential:
+                    # Sensitive names are path-policy findings, even when the
+                    # inode was already accepted under a harmless alias.
+                    inspection_class = ("credential-name", str(path))
+                elif suffix in STORE_SUFFIXES:
+                    inspection_class = ("key-store",)
+                elif name.lower() in {"cacerts", "jssecacerts"}:
+                    inspection_class = ("named-trust-store",)
+                else:
+                    inspection_class = ("key-material",)
+                identity = (file_stat.st_dev, file_stat.st_ino, inspection_class)
+                if identity in seen:
+                    continue
+                if not candidate:
                     source_inspected += 1
                     reason = "embedded PEM private-key material" if has_embedded_private_pem(path.read_bytes()) else None
                 else:
@@ -176,6 +187,7 @@ def inspect_credentials(roots=ROOTS):
                     with path.open("rb") as source:
                         digest = hashlib.file_digest(source, "sha256").hexdigest()
                     findings.append({"path": str(path), "reason": reason, "sha256": digest})
+                seen.add(identity)  # Only completed, equivalent inspections deduplicate.
     return {"findings": sorted(findings, key=lambda f: f["path"]), "candidate_files_inspected": inspected,
             "roots": [str(root) for root in roots],
             "source_files_inspected": source_inspected, "source_files_over_limit": source_over_limit,

@@ -86,8 +86,11 @@ Pub assets must match exact members of the checksum-verified official archive.
 The known `flutter_template_images` 5.0.0, `http_multi_server` 3.2.2, and `shelf`
 1.4.2 archives also have fixed provenance checksums in the sanitizer. Later tool
 or package versions may retain the same verified assets or omit them. Changed
-content fails for review; Flutter itself is not pinned. The credential audit
-remains unchanged and must still inspect the rebuilt filesystem and layers.
+content fails for review; Flutter itself is not pinned. The expanded credential
+audit covers SDK/system key files and bounded source-file PEM blocks, with no
+exemptions for public test keys. It inspects the rebuilt filesystem; separate
+layer assessment is still required because removed files may remain in earlier
+image layers. See the [validation guide](validation/README.md) for scope and limits.
 
 The base is the Docker Official Image `ubuntu:24.04`, maintained by Canonical.
 Each run resolves its current digest. No suitable Flutter-team-maintained public
