@@ -4,12 +4,14 @@ This repository uses `master` as the canonical branch.
 
 ## Flutter runtime images
 
-`Refresh Flutter runtimes` builds weekly and on manual dispatch from `master`.
-Same-repository image PRs can publish validated unique candidates for review.
-Only a validated `master` refresh advances the two floating container tags.
-Container publication does not use the shared action release contract.
-See [Flutter runtime operations](../runtimes/flutter/README.md) for image references,
-permissions, validation integration, evidence, and partial-promotion recovery.
+`Build Flutter runtimes (PR)` builds slim, then full from that local slim image.
+It has read-only repository access and does not publish images.
+`Publish Flutter runtimes` runs weekly and on manual dispatch from `master`.
+Both builds must succeed before it pushes unique references, then `slim` and `full`.
+Floating publication is not transactional. Previous unique references remain available.
+Container publication is separate from the shared action release contract.
+See [Flutter runtime operations](../runtimes/flutter/README.md) for commands,
+permissions, image references, and supported use.
 
 ## Action metadata validation
 
