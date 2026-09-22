@@ -243,5 +243,72 @@ class SanitationTests(unittest.TestCase):
         self.assertEqual(target.read_bytes(), CONTENT)
 
 
+class PubSourceSanitationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.cache = Path(temporary.name)
+        patcher = patch.object(sanitizer.urllib.request, "urlopen", side_effect=AssertionError("Network forbidden"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def fixture(self, name, version, member, size):
+        content = b"synthetic Dart fixture, no private key".ljust(size, b".")
+        target = self.cache / "hosted/pub.dev" / f"{name}-{version}" / member
+        target.parent.mkdir(parents=True)
+        target.write_bytes(content)
+        payload = archive([(member, tarfile.REGTYPE, content)])
+        metadata = {"version": version, "pubspec": {"name": name},
+                    "archive_url": f"https://pub.dev/api/archives/{name}-{version}.tar.gz",
+                    "archive_sha256": hashlib.sha256(payload).hexdigest()}
+        return target, content, metadata, payload
+
+    def test_dispatch_verifies_and_removes_exact_http_and_shelf_test_sources(self):
+        rules = {
+            "http_multi_server": ("3.2.2", "test/http_multi_server_test.dart", 15743,
+                                  "7691587fa5d06046dae7bcb48a4ece6cdcf11e2f5cba58ae6e2310c0f0084b49"),
+            "shelf": ("1.4.2", "test/ssl_certs.dart", 5610,
+                      "f133db769be943f71c8ef56dfb046e16b4ec7620aa93d3a25717d42d8f0e05c4"),
+        }
+        fixtures = {name: self.fixture(name, *rule[:3]) for name, rule in rules.items()}
+        original = sanitizer.sanitize_package
+        observed = []
+
+        def dispatch(cache, name, member, size, digest, known_archives):
+            if name not in rules:
+                return original(cache, name, member, size, digest, known_archives)
+            observed.append(name)
+            version, expected_member, expected_size, expected_digest = rules[name]
+            self.assertEqual((member, size, digest), (expected_member, expected_size, expected_digest))
+            self.assertIn(version, known_archives)
+            target, content, metadata, payload = fixtures[name]
+            urls = [f"https://pub.dev/api/packages/{name}/versions/{version}", metadata["archive_url"]]
+
+            def fetch(url):
+                return {urls[0]: json.dumps(metadata).encode(), urls[1]: payload}[url]
+
+            with patch.object(sanitizer, "fetch", side_effect=fetch) as network:
+                original(cache, name, member, size, hashlib.sha256(content).hexdigest(),
+                         {version: metadata["archive_sha256"]})
+                self.assertEqual([call.args[0] for call in network.call_args_list], urls)
+            self.assertFalse(target.exists())
+
+        # Only fixture expected digests are substituted; generic verification and
+        # real dispatch targets/sizes/known-version rules are exercised unchanged.
+        with patch.object(sanitizer, "sanitize_package", side_effect=dispatch), \
+                contextlib.redirect_stdout(io.StringIO()):
+            sanitizer.sanitize(self.cache)
+        self.assertEqual(observed, ["http_multi_server", "shelf"])
+
+    def test_new_package_archive_pin_mismatch_preserves_source(self):
+        name, version, member = "http_multi_server", "3.2.2", "test/http_multi_server_test.dart"
+        target, content, metadata, payload = self.fixture(name, version, member, 15743)
+        with patch.object(sanitizer, "fetch", side_effect=[json.dumps(metadata).encode(), payload]):
+            with self.assertRaisesRegex(ValueError, "Known template archive changed"):
+                sanitizer.sanitize_package(self.cache, name, member, len(content),
+                                           hashlib.sha256(content).hexdigest(), {version: "0" * 64})
+        self.assertEqual(target.read_bytes(), content)
+
+
 if __name__ == "__main__":
     unittest.main()

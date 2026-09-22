@@ -11,6 +11,8 @@ import sys
 import time
 import zipfile
 
+from content_audit import inspect_credentials
+
 
 EVIDENCE = Path("/workspace/evidence")
 PROJECT = Path("/workspace/project")
@@ -111,23 +113,13 @@ def audit(report):
     metadata = json.loads((METADATA / "toolchain.json").read_text())
     report["metadata"] = metadata
     # Inspect pristine images, not the synthetic projects or their debug signing keys.
-    findings = []
-    for root in (Path("/root"), Path("/home"), Path("/cache"), Path("/workspace"), Path("/tmp")):
-        for path in root.rglob("*"):
-            if path.name in {".git-credentials", "credentials", "credentials.json", ".netrc", "id_rsa",
-                             "id_ed25519", "key.properties", "google-services.json", ".npmrc"}:
-                findings.append(str(path))
-            if path.is_file() and path.suffix in {".jks", ".keystore", ".p12", ".pfx"}:
-                findings.append(str(path))
+    assessment = inspect_credentials()
+    report["content_assessment"] = assessment
+    findings = [finding["path"] for finding in assessment["findings"]]
     if any(Path("/workspace").glob("*")) and set(Path("/workspace").iterdir()) != {EVIDENCE}:
         findings.append("Unexpected project state under /workspace")
     if findings:
         raise ValueError(f"Potential embedded credential/project files: {findings}")
-    report["content_assessment"] = {
-        "credential_filename_findings": findings,
-        "scope": "pristine root/home/cache/workspace/tmp; image environment checked by host",
-        "limitation": "targeted assessment, not an exhaustive secret scan of every image layer",
-    }
 
 
 def template_kotlin_version(settings):

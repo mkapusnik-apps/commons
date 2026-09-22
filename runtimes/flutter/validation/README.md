@@ -85,8 +85,27 @@ Container elapsed time includes setup/checks; worker and individual command time
 are separate. Build time belongs to the builder's evidence. Image-pull time is
 explicitly not measured by this local-only hook; hosted anonymous pull evidence
 must measure it separately. APK/AAB binaries are inspected and hashed, not retained.
-Content assessment checks pristine known credential locations and workspace state
-plus image environment names. It does not claim exhaustive scanning of every layer.
+Content assessment covers credential/key candidates under `/root`, `/home`, `/cache`,
+`/workspace`, `/tmp`, `/opt`, `/usr`, `/etc`, and `/var`, plus image environment names
+and unexpected workspace state. SDK sources, system CMake templates, and Android
+CMake/NDK installations are included; virtual filesystems are not scanned. Individual
+certificate/key links are resolved with inode deduplication, without recursive
+directory-link traversal. Read errors fail the gate instead of silently hiding paths.
+
+The audit detects PKCS#12 private-key bags, Java private/secret-key entries, PEM
+private keys and DER private-key files. Certificate-only PKCS#12/Java trust stores,
+X.509 certificates, and public-key files are not credentials merely because their
+filename has a store/key suffix. Opaque or malformed candidate key stores fail
+closed. Inspection never exports key bytes: evidence records only paths, reasons,
+and file hashes, including on failure. There is no public-test-key exemption.
+Common source/configuration files (including Dart, Python, JavaScript, Kotlin,
+C/C++, JSON and YAML) up to 2 MiB are also scanned for embedded private-key PEM
+blocks, including multiline literals and escaped newlines. Matching header/footer
+and payload are required, so parser header constants and public certificates are
+not mistaken for keys. Evidence records the extension scope, size bound, scanned
+count and oversized-source count. Key/store candidates are not excluded by this
+source-size bound. This is not exhaustive detection of arbitrary encoded secrets,
+oversized source, encrypted archives, or files retained only in earlier image layers.
 
 The shell hook is fail-closed, but does not itself implement publication. Negative
 local tests exercise actual validator control flow and nonzero subprocess outcomes.
@@ -104,3 +123,9 @@ These cover resolver selection/retention/failure, pair and image identity, missi
 tools, download classification, artifact changes, ABI inspection, nonzero workload
 exits, and fail-closed cleanup/reference preservation with explicit Docker-boundary
 fakes. They are not substitutes for real candidate qualification.
+
+Content-audit tests also require OpenSSL. Run them inside an existing runtime image
+if the host lacks it; they fail rather than skip when it is unavailable. They
+generate disposable local key/certificate fixtures without networking or outputting
+private material, and verify both the reported SDK/system misses and normal trust
+stores. No genuine consumer credentials are used.

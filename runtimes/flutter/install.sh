@@ -8,6 +8,7 @@ case "$1" in
     printf '%s  /tmp/flutter.tar.xz\n' "$(jq -r .flutter.sha256 "$selection")" | sha256sum --check
     tar -xJf /tmp/flutter.tar.xz -C /opt
     rm /tmp/flutter.tar.xz
+    python3 /usr/local/lib/flutter-runtime/sanitize-sdk-keys.py flutter
     flutter config --no-analytics --no-cli-animations
     # Universal artifacts and the Linux host engine support flutter_tester.
     flutter precache --linux --no-android --no-ios --no-web --no-macos --no-windows --no-fuchsia
@@ -25,6 +26,7 @@ case "$1" in
     set -o pipefail
     mapfile -t packages < <(jq -r '.android_packages[]' "$selection")
     sdkmanager --sdk_root="$ANDROID_HOME" --install "${packages[@]}"
+    python3 /usr/local/lib/flutter-runtime/sanitize-sdk-keys.py android
     flutter config --android-sdk "$ANDROID_HOME" --jdk-dir "$JAVA_HOME"
     flutter precache --android --no-ios --no-web --no-macos --no-windows --no-fuchsia
     ;;

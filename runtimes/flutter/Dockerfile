@@ -7,9 +7,11 @@ LABEL org.opencontainers.image.source="https://github.com/mkapusnik-apps/commons
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
       io.commons.flutter.publication="${REFRESH_ID}"
 # REFRESH_ID changes on every run/attempt, including unchanged Flutter releases.
+COPY sanitize-sdk-keys.py /usr/local/lib/flutter-runtime/
 RUN test -n "$REFRESH_ID" && apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git unzip xz-utils zip bash python3 jq \
       libglu1-mesa libgtk-3-0 libstdc++6 clang cmake ninja-build pkg-config \
+    && python3 /usr/local/lib/flutter-runtime/sanitize-sdk-keys.py system \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=resolution resolved.json /usr/local/share/flutter-runtime/resolved.json
 COPY install.sh metadata.py sanitize-template-key.py /usr/local/lib/flutter-runtime/
@@ -37,6 +39,7 @@ ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
     ANDROID_SDK_ROOT=/opt/android-sdk \
     PATH=/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:$PATH
 RUN apt-get update && apt-get install -y --no-install-recommends openjdk-21-jdk-headless \
+    && python3 /usr/local/lib/flutter-runtime/sanitize-sdk-keys.py system \
     && rm -rf /var/lib/apt/lists/* \
     && bash /usr/local/lib/flutter-runtime/install.sh android \
     && python3 /usr/local/lib/flutter-runtime/cache-engine.py \

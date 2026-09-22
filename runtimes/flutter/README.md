@@ -57,14 +57,37 @@ Do not share writable caches or containers between mutually untrusted workloads.
 
 ## Source and tool inventory
 
-SDK installation removes only the verified `Windows_TemporaryKey.pfx` from the
-`flutter_template_images` Windows UWP template. This public upstream asset contains
-a test signing key and is outside the Linux/Android support set. Removal occurs in
-the installation layer, not a later cleanup layer. The sanitizer checks the exact
-asset hash and its identity in the checksum-verified official Pub archive. Version
-5.0.0 also has a fixed archive checksum from the provenance investigation. Later
-package versions can retain the same verified asset or omit it; changed content
-fails the build for review. The credential audit remains unchanged.
+Installation removes only these verified upstream files containing private keys.
+They are test fixtures, an example, or Windows templates outside the supported
+Linux/Android workloads. Package libraries and Linux/Android build tools remain.
+
+| Location | Exact file removed | Introducing layer |
+| --- | --- | --- |
+| System `/usr/share/cmake-*` | `Templates/Windows/Windows_TemporaryKey.pfx` | APT installation |
+| Android `/opt/android-sdk/cmake/*/share/cmake-*` | `Templates/Windows/Windows_TemporaryKey.pfx` | Android installation |
+| Flutter SDK | `engine/src/flutter/testing/android/native_activity/debug.keystore` | Flutter archive installation |
+| Flutter SDK | `packages/flutter_tools/test/data/asset_test/tls_cert/dummy-key.pem` | Flutter archive installation |
+| Flutter SDK | `examples/image_list/lib/main.dart` | Flutter archive installation |
+| Pub `flutter_template_images` | `templates/app/winuwp.tmpl/runner_uwp/Windows_TemporaryKey.pfx` | Flutter/Android installation |
+| Pub `http_multi_server` | `test/http_multi_server_test.dart` | Flutter/Android installation |
+| Pub `shelf` | `test/ssl_certs.dart` | Flutter/Android installation |
+
+Sanitation runs before the introducing RUN layer completes, not in a later cleanup
+layer. It checks exact paths, sizes, SHA-256 hashes, and official upstream content.
+It rejects substituted paths and unexpected content. The SDK sanitizer compares
+Flutter fixtures with the exact resolved revision's public source. CMake copies
+must match the known upstream Windows template from the
+[3.28.3](https://github.com/Kitware/CMake/blob/v3.28.3/Templates/Windows/Windows_TemporaryKey.pfx)
+and [3.22.1](https://github.com/Kitware/CMake/blob/v3.22.1/Templates/Windows/Windows_TemporaryKey.pfx)
+sources. Both have SHA-256
+`a957fb8c8a3e3e7b1b8d2c58e97e02759b61cd7cbecca409c0763c8d6d9691f4`.
+
+Pub assets must match exact members of the checksum-verified official archive.
+The known `flutter_template_images` 5.0.0, `http_multi_server` 3.2.2, and `shelf`
+1.4.2 archives also have fixed provenance checksums in the sanitizer. Later tool
+or package versions may retain the same verified assets or omit them. Changed
+content fails for review; Flutter itself is not pinned. The credential audit
+remains unchanged and must still inspect the rebuilt filesystem and layers.
 
 The base is the Docker Official Image `ubuntu:24.04`, maintained by Canonical.
 Each run resolves its current digest. No suitable Flutter-team-maintained public
