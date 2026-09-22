@@ -34,18 +34,31 @@ def digest(path):
 def classify_downloads(text):
     """Report dependency activity separately; fail recognizable tool acquisition."""
     tool, dependency = [], []
+    tool_url = re.compile(
+        r"https?://(?:dl\.google\.com/android/repository/|"
+        r"storage\.googleapis\.com/(?:flutter_infra_release/|(?:[^/\s]+/)?download\.flutter\.io/))", re.I)
+    operation = re.compile(
+        r"^(?:Downloading|Downloaded|Download|Fetching|Installing|Installed|Install|"
+        r"Preparing|Unzipping|Checking the license for|HTTP (?:GET|HEAD))\b", re.I)
+    tooling = re.compile(
+        r"\b(?:android-(?:arm|x64|x86)[\w-]*|linux-x64[\w-]*|Dart SDK|Flutter SDK|"
+        r"flutter_patched_sdk\w*|Flutter tools|Material fonts|Gradle Wrapper|"
+        r"Android SDK|SDK Platforms?|platform-tools|build[- ]tools|NDK|CMake)\b|"
+        r"\bplatforms;android-\d+", re.I)
     for line in text.splitlines():
-        if re.search(r"Downloading.*(?:flutter_infra_release|download\.flutter\.io|"
-                     r"android-(?:arm|x64|x86)|linux-x64|Dart SDK|Flutter SDK|"
-                     r"flutter_patched_sdk|flutter tools|Material fonts|Gradle Wrapper)|"
-                     r"(?:Installing|Preparing|Downloading|Install|Checking the license for).*"
-                     r"(?:Android SDK|SDK Platform|Build-Tools|NDK|CMake)|"
-                     r"(?:storage\.googleapis\.com/download\.flutter\.io|"
-                     r"dl\.google\.com/android/repository)/", line, re.I):
+        # Flutter/Gradle timestamps and Pub/CMake log prefixes are not events.
+        message = re.sub(r"^(?:\s*\[[^\]\r\n]*\]\s*)+", "", line).strip()
+        message = re.sub(r"^(?:IO|MSG|C/C\+\+)\s*:\s*", "", message)
+        event = operation.match(message)
+        # Match package descriptions outside URLs/paths. Kotlin Maven coordinates
+        # named kotlin-build-tools-* are project dependencies, not Android tools.
+        description = re.sub(r"(?:https?|file)://\S+|(?<!\S)/\S+", " ", message)
+        if ((event and (tool_url.search(message) or tooling.search(description)))
+                or tool_url.match(message)):
             tool.append(line)
-        elif re.search(r"Downloading|Downloaded|Resolving dependencies|Got dependencies|"
-                       r"https?://(?:pub\.dev|repo\.maven|repo1\.maven|dl\.google\.com/dl/android/maven|"
-                       r"services\.gradle\.org|downloads\.gradle\.org)", line, re.I):
+        elif (event and re.search(r"https?://", message)) or re.match(
+                r"^(?:Resolving dependencies|Got dependencies|Downloading packages|"
+                r"Get versions from https?://)", message, re.I):
             dependency.append(line)
     return {"toolchain": tool, "project_dependencies": dependency}
 

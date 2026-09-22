@@ -107,6 +107,63 @@ Downloading https://dl.google.com/android/repository/platform-36.zip
             "file:///opt/flutter-storage/download.flutter.io/io/flutter/x86_64_release/artifact.jar"
         ), {"toolchain": [], "project_dependencies": []})
 
+    def test_observed_gradle_commands_and_installed_inventory_are_not_acquisition(self):
+        lines = [
+            "[   +1 ms] executing: [/workspace/project/android/] /workspace/project/android/gradlew "
+            "--full-stacktrace --info -Ptarget-platform=android-arm,android-arm64,android-x64 "
+            "-Pflutter.installedNdkVersions=28.2.13676358 "
+            "-Pflutter.sdkManagerPath=/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager bundleRelease",
+            "[        ] C/C++: SDK Manager found the following installed packages: "
+            "build-tools;35.0.0 build-tools;36.0.0 cmake;3.22.1 ndk;28.2.13676358 "
+            "platform-tools platforms;android-34 platforms;android-35 platforms;android-36",
+            "[  +31 ms] Flutter assets will be downloaded from file:///opt/flutter-storage. "
+            "Make sure you trust this source!",
+        ]
+        self.assertEqual(worker.classify_downloads("\n".join(lines)),
+                         {"toolchain": [], "project_dependencies": []})
+
+    def test_kotlin_build_tools_maven_downloads_are_dependencies(self):
+        for component in ("api", "impl", "compat", "cri-impl"):
+            for host in ("plugins.gradle.org/m2", "repo.maven.apache.org/maven2"):
+                for extension in ("pom", "jar"):
+                    line = (f"[        ] Downloading https://{host}/org/jetbrains/kotlin/"
+                            f"kotlin-build-tools-{component}/2.4.0/"
+                            f"kotlin-build-tools-{component}-2.4.0.{extension} "
+                            "to /cache/gradle/.tmp/gradle_download123bin")
+                    with self.subTest(line=line):
+                        self.assertEqual(worker.classify_downloads(line),
+                                         {"toolchain": [], "project_dependencies": [line]})
+
+    def test_true_acquisition_events_remain_fatal_matches(self):
+        lines = [
+            '[ +10 ms] Preparing "Install NDK (Side by side) 28.2.13676358".',
+            '[        ] Checking the license for package CMake 3.22.1 in /opt/android-sdk/licenses',
+            'Installing Android SDK Platform 36 in /opt/android-sdk/platforms/android-36',
+            'Install Android SDK Build-Tools 36.0.0 complete.',
+            'Installed platform-tools',
+            'Downloading build-tools;36.0.0',
+            'Downloading platforms;android-36',
+            'Downloading ndk;28.2.13676358',
+            'Unzipping cmake/3.22.1......',
+            '[ +1 ms] [ +2 ms] Downloading android-arm64-release/linux-x64 tools...',
+            'Downloading Dart SDK', 'Downloading Flutter SDK',
+            'Downloading flutter_patched_sdk_product tools...',
+            'Downloading Material fonts...', 'Downloading Gradle Wrapper...',
+            'Downloading https://storage.googleapis.com/flutter_infra_release/flutter.zip',
+            'IO : HTTP GET https://storage.googleapis.com/download.flutter.io/io/flutter/engine.jar',
+            'Downloading https://storage.googleapis.com/realm/download.flutter.io/io/flutter/engine.jar',
+            'https://dl.google.com/android/repository/android-ndk-r28c-linux.zip...',
+            'Downloading NDK from https://repo.maven.apache.org/maven2/unexpected.zip',
+        ]
+        for line in lines:
+            with self.subTest(line=line):
+                self.assertEqual(worker.classify_downloads(line),
+                                 {"toolchain": [line], "project_dependencies": []})
+
+    def test_static_metadata_urls_are_not_download_events(self):
+        line = '"android_repository": "https://dl.google.com/android/repository/repository2-1.xml"'
+        self.assertEqual(worker.classify_downloads(line), {"toolchain": [], "project_dependencies": []})
+
     def test_added_removed_and_replaced_artifacts_fail(self):
         worker.compare_snapshots({"sdk": "hash"}, {"sdk": "hash"})
         for after in ({}, {"sdk": "hash", "new": "download"}, {"sdk": "different"}):
@@ -167,6 +224,7 @@ class FailClosedTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, \
                 patch.object(validate, "docker", side_effect=fake_docker), \
                 patch.object(validate.subprocess, "check_output", side_effect=fake_git), \
+                patch.object(validate, "check_production_lineage", return_value={"image_source_revision": "checkpoint"}), \
                 patch.object(validate, "run_container", side_effect=fake_container):
             with self.assertRaisesRegex(RuntimeError, "controlled real-workload"):
                 validate.validate(["lightweight", "full"], Path(directory))

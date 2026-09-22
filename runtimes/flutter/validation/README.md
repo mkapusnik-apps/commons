@@ -1,21 +1,31 @@
 # Candidate qualification
 
 Run from a clean Commons checkpoint after building both local image targets with
-`SOURCE_REVISION` equal to that checkpoint:
+`SOURCE_REVISION` equal to that checkpoint or a verified production-identical ancestor:
 
 ```sh
 bash runtimes/flutter/validate.sh LIGHTWEIGHT_LOCAL_REF FULL_LOCAL_REF EVIDENCE_DIRECTORY
 ```
 
 The hook requires Python 3.11+ and Docker. It never pulls, pushes, retags, or deletes
-candidate images. It pins container execution to inspected image IDs, rejects a
-different source revision/publication pair, and checks that input references are
+candidate images. It pins container execution to inspected image IDs, rejects
+different image source/publication pairs, and checks that input references are
 unchanged on exit. Failures return nonzero and retain partial evidence. Each call
 uses a new evidence subdirectory so stale successful results cannot mask failure.
 The caller owns retained evidence and image cleanup; the hook removes its own
 temporary containers and named volumes, including on ordinary failures and SIGTERM.
 After an uncatchable termination, remove only resources bearing that invocation's
 `commons-flutter-check-` names recorded in Docker and its evidence.
+
+For validator-only follow-up commits, retain the original image labels and IDs.
+The hook requires both image source labels to identify the same full commit SHA,
+verifies it is an ancestor of the clean validation checkpoint, and compares Git
+objects and modes under `runtimes/flutter` and `.github/workflows/flutter-runtimes.yml`.
+Only `runtimes/flutter/validation/` is excluded. Changes to the Dockerfile, installers,
+resolver, package inventory, wrapper, other runtime paths or publication workflow
+reject reuse. Evidence records both revisions, scope, equal production entries,
+and their SHA-256. This is tree equality verification, not a revision bypass or
+relabeling operation. Full local history for the image source must be available.
 
 ## Genuine workload coverage
 
@@ -54,8 +64,12 @@ Android automatic SDK installation is disabled in the synthetic Gradle projects.
 SHA-256 inventories before/after cover Flutter engine and Dart SDK contents, the
 Android SDK, and the local engine Maven repository. Changed/new/missing tooling
 fails the hook. Android root dotfile bookkeeping is excluded, not package contents.
-Logs independently reject recognized tool acquisition and separately record Pub,
-Maven, and Gradle distribution dependency activity. This is not a packet capture;
+Logs independently reject recognized tool acquisition events and separately record
+Pub, Maven, and Gradle distribution dependency activity. Command echoes, installed
+package inventory, and static storage-source notices are not acquisition events.
+Kotlin Maven dependencies named `kotlin-build-tools-*` are not Android SDK Build
+Tools; actual SDK acquisition descriptions and official tool URLs still fail.
+This is not a packet capture;
 unknown log messages alone are not proof of network absence. Download controls,
 artifact comparisons, and logs must be assessed together.
 

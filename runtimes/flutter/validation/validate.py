@@ -14,6 +14,8 @@ import uuid
 
 
 HERE = Path(__file__).resolve().parent
+REPOSITORY = HERE.parents[2]
+PRODUCTION_PATHS = ("runtimes/flutter", ".github/workflows/flutter-runtimes.yml")
 UID = "12345:23456"
 CASES = {
     "lightweight": ["lightweight"],
@@ -23,6 +25,34 @@ CASES = {
 
 def docker(*args, timeout=120):
     return subprocess.check_output(["docker", *args], text=True, timeout=timeout)
+
+
+def check_production_lineage(source, revision):
+    """Reuse only an ancestor's identical production Git objects and file modes."""
+    if not isinstance(source, str) or not re.fullmatch(r"[0-9a-f]{40}", source):
+        raise ValueError("Image source revision must be a full commit SHA")
+    subprocess.run(["git", "merge-base", "--is-ancestor", source, revision],
+                   cwd=REPOSITORY, check=True, capture_output=True, text=True)
+
+    def production_tree(commit):
+        tree = subprocess.check_output(
+            ["git", "ls-tree", "-r", "-z", commit, "--", *PRODUCTION_PATHS],
+            cwd=REPOSITORY, text=True)
+        entries = sorted(entry for entry in tree.split("\0") if entry
+                         and not entry.split("\t", 1)[1].startswith("runtimes/flutter/validation/"))
+        if not any(entry.endswith("\truntimes/flutter/Dockerfile") for entry in entries):
+            raise ValueError("Missing runtime production tree")
+        return entries
+
+    source_tree = production_tree(source)
+    validation_tree = production_tree(revision)
+    if source_tree != validation_tree:
+        raise ValueError("Image source and validation checkpoint have different runtime production trees")
+    return {"image_source_revision": source, "validation_revision": revision,
+            "ancestor_verified": True, "production_paths": PRODUCTION_PATHS,
+            "excluded_path": "runtimes/flutter/validation/",
+            "production_tree_sha256": hashlib.sha256("\0".join(source_tree).encode()).hexdigest(),
+            "production_git_entries": source_tree}
 
 
 def check_image(image, revision):
@@ -133,7 +163,7 @@ def validate(refs, evidence):
         revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
         if subprocess.check_output(["git", "status", "--porcelain"], text=True).strip():
             raise ValueError("Qualification requires a clean immutable checkpoint")
-        summary["source_revision"] = revision
+        summary["validation_revision"] = revision
         summary["workload_sha256"] = {
             str(path.relative_to(HERE)): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in sorted(HERE.rglob("*")) if path.is_file() and "__pycache__" not in path.parts
@@ -141,14 +171,20 @@ def validate(refs, evidence):
         for variant, ref in zip(CASES, refs):
             image = json.loads(docker("image", "inspect", ref))[0]
             images[ref] = image["Id"]
-            check_image(image, revision)
+            source = (image["Config"].get("Labels") or {}).get("org.opencontainers.image.revision")
+            lineage = check_production_lineage(source, revision)
+            check_image(image, source)
             summary[variant] = {"ref": ref, "id": image["Id"], "digests": image.get("RepoDigests", []),
-                                "labels": image["Config"]["Labels"]}
+                                "labels": image["Config"]["Labels"], "lineage": lineage}
         if len(set(images.values())) != 2:
             raise ValueError("Expected two distinct candidate images")
         if (summary["lightweight"]["labels"]["io.commons.flutter.publication"]
                 != summary["full"]["labels"]["io.commons.flutter.publication"]):
             raise ValueError("Different publication identities")
+        if (summary["lightweight"]["lineage"]["image_source_revision"]
+                != summary["full"]["lineage"]["image_source_revision"]):
+            raise ValueError("Different image source revisions")
+        summary["source_revision"] = summary["lightweight"]["lineage"]["image_source_revision"]
         audits = {}
         for variant in CASES:
             audits[variant] = run_container(summary[variant]["id"], "audit", root / variant / "audit",
