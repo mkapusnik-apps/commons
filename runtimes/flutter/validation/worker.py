@@ -130,8 +130,18 @@ def audit(report):
     }
 
 
+def template_kotlin_version(settings):
+    versions = re.findall(
+        r'id\(\s*"org\.jetbrains\.kotlin\.android"\s*\)\s+version\s+"(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)"',
+        settings)
+    if len(versions) != 1:
+        raise ValueError("Expected one literal Kotlin version in the selected Flutter template")
+    return versions[0]
+
+
 def configure_android(case):
     android = PROJECT / "android"
+    kotlin_version = template_kotlin_version((android / "settings.gradle.kts").read_text())
     properties = android / "gradle.properties"
     with properties.open("a") as output:
         output.write("\nandroid.builder.sdkDownload=false\norg.gradle.daemon=false\n")
@@ -140,7 +150,8 @@ def configure_android(case):
         raise ValueError("Flutter Android Kotlin template changed; update the workload explicitly")
     if case != "defaults":
         config = MATRIX[case]
-        settings = (FIXTURES / "settings.gradle.kts").read_text().replace("@AGP@", config["agp"])
+        settings = ((FIXTURES / "settings.gradle.kts").read_text()
+                    .replace("@AGP@", config["agp"]).replace("@KOTLIN@", kotlin_version))
         (android / "settings.gradle.kts").write_text(settings)
         text = (FIXTURES / "build.gradle.kts").read_text()
         for name, value in (("SDK", config["sdk"]), ("BUILD_TOOLS", config["build_tools"])):
@@ -164,6 +175,7 @@ def configure_android(case):
     (native / "CMakeLists.txt").write_text(
         'cmake_minimum_required(VERSION 3.22.1)\nproject(readiness C)\nadd_library(readiness SHARED readiness.c)\n')
     (native / "readiness.c").write_text("int readiness(void) { return 42; }\n")
+    return kotlin_version
 
 
 def check_archive(path, abis):
@@ -238,7 +250,7 @@ def workload(case, report):
             java = run(["java", "-version"], report, "java")
             if not re.search(r'version "21(?:\.|\")', java):
                 raise ValueError("Wrong live JDK")
-            configure_android(case)
+            report["kotlin_template_version"] = configure_android(case)
             # Preserve the exact synthetic workload/tool configuration, not private source.
             for relative in ("app/build.gradle.kts", "settings.gradle.kts", "gradle.properties",
                              "gradle/wrapper/gradle-wrapper.properties"):

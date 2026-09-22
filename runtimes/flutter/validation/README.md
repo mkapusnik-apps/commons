@@ -47,7 +47,12 @@ The full-image matrix additionally exercises:
 | sdk35 | 35 / 35.0.0 | 8.13.2 / 9.4.1 | NDK 28.2.13676358, CMake 3.22.1 | Release x86_64 APK |
 | sdk36 | 36 / 36.0.0 | 8.13.2 / 9.4.1 | NDK 28.2.13676358, CMake 3.22.1 | Release AAB, ARM32/ARM64/x86_64 |
 
-The retained consumer combinations use Kotlin 2.1.0. They are qualification
+The retained consumer combinations preserve their listed AGP/Gradle and Android
+tool choices, and use the Kotlin plugin version from the selected Flutter release's
+generated template. The hook requires exactly one literal template Kotlin version,
+fails on an unsupported template layout, and records that version and the final
+settings file in evidence. It does not pin the fixture to an obsolete Kotlin version
+or bypass Flutter dependency checks. These are qualification
 inputs, not an assertion of compatibility: incompatible combinations fail the
 gate and require an explicit support decision, not a skipped check. A tiny C
 library forces real NDK/CMake compilation. APK/AAB contents must include that
