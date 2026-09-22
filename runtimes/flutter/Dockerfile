@@ -14,7 +14,7 @@ RUN test -n "$REFRESH_ID" && apt-get update && apt-get install -y --no-install-r
     && python3 /usr/local/lib/flutter-runtime/sanitize-sdk-keys.py system \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=resolution resolved.json /usr/local/share/flutter-runtime/resolved.json
-COPY install.sh metadata.py sanitize-template-key.py /usr/local/lib/flutter-runtime/
+COPY install.sh metadata.py sanitize-template-key.py prepare-sdk-git.py /usr/local/lib/flutter-runtime/
 ENV FLUTTER_ROOT=/opt/flutter \
     PATH=/opt/flutter/bin:/opt/flutter/bin/cache/dart-sdk/bin:$PATH \
     HOME=/home/runtime \

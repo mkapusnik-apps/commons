@@ -110,6 +110,24 @@ count and oversized-source count. Key/store candidates are not excluded by this
 source-size bound. This is not exhaustive detection of arbitrary encoded secrets,
 oversized source, encrypted archives, or files retained only in earlier image layers.
 
+Retained SDK Git metadata is checked separately: exact resolved release tag/commit,
+`stable` branch and remote-tracking ref, official origin, shallow history, and a
+release-tree-equivalent index are required. Repository-local transport policies
+must deny both generic and HTTPS transport. Local object enumeration includes
+unreachable objects and rejects **any blob** without printing object contents.
+The audit itself additionally blocks transport while inspecting metadata. This
+validates version-detection metadata, not support for SDK checkout or upgrades.
+
+Preload archive acceptance is narrowly scoped to the confirmed asset paths in
+`flutter_template_images`, `http_multi_server`, `shelf`, and `googleapis_auth`.
+It never extracts files. Retained confirmed assets fail; changed content at those
+paths requires review rather than an exemption. Other package families and clean
+later archives with no confirmed member are not falsely flagged. Compressed input
+is bounded to 32 MiB, expanded member sizes to 128 MiB, 20,000 members, and a 2 MiB
+confirmed asset. Exceeding a bound or encountering a malformed/link asset fails
+closed. This is not a general encrypted/nested-archive scanner; independent image
+layer assessment is still separate. Findings are preserved in failed audit evidence.
+
 The shell hook is fail-closed, but does not itself implement publication. Negative
 local tests exercise actual validator control flow and nonzero subprocess outcomes.
 They do **not** prove GitHub job gating or registry reference safety. Controlled
@@ -132,3 +150,9 @@ if the host lacks it; they fail rather than skip when it is unavailable. They
 generate disposable local key/certificate fixtures without networking or outputting
 private material, and verify both the reported SDK/system misses and normal trust
 stores. No genuine consumer credentials are used.
+
+Git preparation tests use real isolated repositories with a local filtered
+transport. They verify exact release metadata/index, absence of reachable and
+unreachable blobs, rejection of ignored filters, and blocked missing-blob retrieval
+over file/HTTPS while unrelated consumer repositories still work. Pub/preload
+sanitation tests use synthetic archives and isolated upstream responses.

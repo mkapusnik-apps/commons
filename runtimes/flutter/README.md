@@ -71,6 +71,7 @@ Linux/Android workloads. Package libraries and Linux/Android build tools remain.
 | Pub `flutter_template_images` | `templates/app/winuwp.tmpl/runner_uwp/Windows_TemporaryKey.pfx` | Flutter/Android installation |
 | Pub `http_multi_server` | `test/http_multi_server_test.dart` | Flutter/Android installation |
 | Pub `shelf` | `test/ssl_certs.dart` | Flutter/Android installation |
+| Pub `googleapis_auth` | `test/test_utils.dart` | Flutter/Android installation |
 
 Sanitation runs before the introducing RUN layer completes, not in a later cleanup
 layer. It checks exact paths, sizes, SHA-256 hashes, and official upstream content.
@@ -83,14 +84,43 @@ sources. Both have SHA-256
 `a957fb8c8a3e3e7b1b8d2c58e97e02759b61cd7cbecca409c0763c8d6d9691f4`.
 
 Pub assets must match exact members of the checksum-verified official archive.
-The known `flutter_template_images` 5.0.0, `http_multi_server` 3.2.2, and `shelf`
-1.4.2 archives also have fixed provenance checksums in the sanitizer. Later tool
+The known `flutter_template_images` 5.0.0, `http_multi_server` 3.2.2, `shelf`
+1.4.2, and `googleapis_auth` 2.3.2 archives also have fixed provenance checksums
+in the sanitizer. The same checks apply to their copies in the SDK's
+`.pub-preload-cache`: offending archives are deleted whole, never repacked under
+the original package identity. The prepared, sanitized Pub cache remains usable.
+Other preload archives remain. Later tool
 or package versions may retain the same verified assets or omit them. Changed
 content fails for review; Flutter itself is not pinned. The expanded credential
 audit covers SDK/system key files and bounded source-file PEM blocks, with no
 exemptions for public test keys. It inspects the rebuilt filesystem; separate
 layer assessment is still required because removed files may remain in earlier
 image layers. See the [validation guide](validation/README.md) for scope and limits.
+
+The original SDK Git packs also contain the removed source fixtures. Within the
+archive installation layer, `prepare-sdk-git.py` replaces that history with a
+genuine shallow, blobless, no-checkout clone of the official resolved release tag.
+It verifies the tag's commit against the release index and rejects any retained
+blob objects, including unreachable ones. It preserves the exact upstream
+revision, tag, `stable` branch, official remote, and an index populated from the
+retained trees. It does not checkout missing files or copy the old object store.
+
+Repository-local `protocol.allow=never` and `protocol.https.allow=never` prevent
+the SDK's promisor remote from lazily downloading missing blobs. These policies
+are supported by the image's Git 2.43 and do not affect consumer repositories or
+Pub Git dependencies. Git operations requiring missing SDK source objects fail;
+do not override these policies. Full source history and in-container upgrades
+are not supported. Normal version detection uses authentic release metadata and
+the prepared version cache. Weekly refreshes still resolve the latest stable
+release and build a new image; no fixed Flutter version is introduced.
+
+The `googleapis_auth` preload finding was verified against its
+[official 2.3.2 metadata](https://pub.dev/api/packages/googleapis_auth/versions/2.3.2).
+Its archive SHA-256 is
+`1417d8846663df5e7b77ca56591c5edd442c66ffc9c01ab036e138a21a148e86`.
+The 3,661-byte `test/test_utils.dart` member has SHA-256
+`f0a9f91be4a427d735d1bfa4a2b1d8490c3c6663a48f02911217be5dddbfe957`
+and contains an independently parsed private key. No key bytes are logged.
 
 The base is the Docker Official Image `ubuntu:24.04`, maintained by Canonical.
 Each run resolves its current digest. No suitable Flutter-team-maintained public

@@ -12,6 +12,7 @@ import time
 import zipfile
 
 from content_audit import inspect_credentials
+from retained_content_audit import inspect_preload_archives, inspect_sdk_git
 
 
 EVIDENCE = Path("/workspace/evidence")
@@ -116,6 +117,10 @@ def audit(report):
     assessment = inspect_credentials()
     report["content_assessment"] = assessment
     findings = [finding["path"] for finding in assessment["findings"]]
+    assessment["sdk_git"] = inspect_sdk_git(Path("/opt/flutter"), metadata["selection"])
+    assessment["preload_archives"] = inspect_preload_archives(Path("/opt/flutter/.pub-preload-cache"))
+    findings.extend(assessment["sdk_git"]["findings"])
+    findings.extend(finding["path"] for finding in assessment["preload_archives"]["findings"])
     if any(Path("/workspace").glob("*")) and set(Path("/workspace").iterdir()) != {EVIDENCE}:
         findings.append("Unexpected project state under /workspace")
     if findings:

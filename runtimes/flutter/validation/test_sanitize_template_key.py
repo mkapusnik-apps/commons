@@ -50,6 +50,9 @@ class SanitationTests(unittest.TestCase):
                                       side_effect=AssertionError("Network forbidden in unit tests")).start()
         self.addCleanup(patch.stopall)
         patch.object(sanitizer, "KEY_SHA256", hashlib.sha256(CONTENT).hexdigest()).start()
+        patch.object(sanitizer, "ASSETS", (
+            (sanitizer.PACKAGE, sanitizer.MEMBER, 2560, hashlib.sha256(CONTENT).hexdigest(),
+             {"5.0.0": sanitizer.ARCHIVE_5_SHA256}), *sanitizer.ASSETS[1:])).start()
 
     def installed(self, version="5.0.0", content=CONTENT):
         target = self.cache / "hosted/pub.dev" / f"flutter_template_images-{version}" / sanitizer.MEMBER
@@ -64,6 +67,9 @@ class SanitationTests(unittest.TestCase):
                     "archive_sha256": hashlib.sha256(payload).hexdigest()}
         if version == "5.0.0":
             patch.object(sanitizer, "ARCHIVE_5_SHA256", metadata["archive_sha256"]).start()
+            patch.object(sanitizer, "ASSETS", (
+                (sanitizer.PACKAGE, sanitizer.MEMBER, 2560, hashlib.sha256(CONTENT).hexdigest(),
+                 {"5.0.0": metadata["archive_sha256"]}), *sanitizer.ASSETS[1:])).start()
         return metadata, payload
 
     def execute(self, metadata, payload):
@@ -201,7 +207,9 @@ class SanitationTests(unittest.TestCase):
     def test_known_version_pin_rejects_changed_archive_even_when_metadata_agrees(self):
         target = self.installed()
         metadata, payload = self.upstream()
-        with patch.object(sanitizer, "ARCHIVE_5_SHA256", "0" * 64):
+        with patch.object(sanitizer, "ASSETS", (
+                (sanitizer.PACKAGE, sanitizer.MEMBER, 2560, hashlib.sha256(CONTENT).hexdigest(),
+                 {"5.0.0": "0" * 64}), *sanitizer.ASSETS[1:])):
             with self.assertRaisesRegex(ValueError, "Known template archive changed"):
                 self.execute(metadata, payload)
         self.assertEqual(target.read_bytes(), CONTENT)
@@ -263,12 +271,14 @@ class PubSourceSanitationTests(unittest.TestCase):
                     "archive_sha256": hashlib.sha256(payload).hexdigest()}
         return target, content, metadata, payload
 
-    def test_dispatch_verifies_and_removes_exact_http_and_shelf_test_sources(self):
+    def test_dispatch_verifies_and_removes_exact_http_shelf_and_auth_test_sources(self):
         rules = {
             "http_multi_server": ("3.2.2", "test/http_multi_server_test.dart", 15743,
                                   "7691587fa5d06046dae7bcb48a4ece6cdcf11e2f5cba58ae6e2310c0f0084b49"),
             "shelf": ("1.4.2", "test/ssl_certs.dart", 5610,
                       "f133db769be943f71c8ef56dfb046e16b4ec7620aa93d3a25717d42d8f0e05c4"),
+            "googleapis_auth": ("2.3.2", "test/test_utils.dart", 3661,
+                               "f0a9f91be4a427d735d1bfa4a2b1d8490c3c6663a48f02911217be5dddbfe957"),
         }
         fixtures = {name: self.fixture(name, *rule[:3]) for name, rule in rules.items()}
         original = sanitizer.sanitize_package
@@ -298,7 +308,7 @@ class PubSourceSanitationTests(unittest.TestCase):
         with patch.object(sanitizer, "sanitize_package", side_effect=dispatch), \
                 contextlib.redirect_stdout(io.StringIO()):
             sanitizer.sanitize(self.cache)
-        self.assertEqual(observed, ["http_multi_server", "shelf"])
+        self.assertEqual(observed, ["http_multi_server", "shelf", "googleapis_auth"])
 
     def test_new_package_archive_pin_mismatch_preserves_source(self):
         name, version, member = "http_multi_server", "3.2.2", "test/http_multi_server_test.dart"
@@ -308,6 +318,116 @@ class PubSourceSanitationTests(unittest.TestCase):
                 sanitizer.sanitize_package(self.cache, name, member, len(content),
                                            hashlib.sha256(content).hexdigest(), {version: "0" * 64})
         self.assertEqual(target.read_bytes(), content)
+
+
+class PreloadSanitationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        patcher = patch.object(sanitizer.urllib.request, "urlopen", side_effect=AssertionError("Network forbidden"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def fixture(self, entries=None, version="2.3.2"):
+        name, member = "googleapis_auth", "test/test_utils.dart"
+        data = b"synthetic source, no key".ljust(3661, b".")
+        payload = archive(entries if entries is not None else [(member, tarfile.REGTYPE, data)])
+        target = self.root / f"{name}-{version}.tar.gz"
+        target.write_bytes(payload)
+        metadata = {"version": version, "pubspec": {"name": name},
+                    "archive_url": f"https://pub.dev/api/archives/{name}-{version}.tar.gz",
+                    "archive_sha256": hashlib.sha256(payload).hexdigest()}
+        assets = ((name, member, len(data), hashlib.sha256(data).hexdigest(),
+                   {"2.3.2": metadata["archive_sha256"]}),)
+        return target, metadata, assets
+
+    def sanitize(self, metadata, assets):
+        with patch.object(sanitizer, "ASSETS", assets), \
+                patch.object(sanitizer, "fetch", return_value=json.dumps(metadata).encode()) as fetch, \
+                contextlib.redirect_stdout(io.StringIO()):
+            sanitizer.sanitize_preload(self.root)
+        fetch.assert_called_once_with(f"https://pub.dev/api/packages/googleapis_auth/versions/{metadata['version']}")
+
+    def test_verified_offending_archive_deleted_whole_other_archives_unchanged(self):
+        target, metadata, assets = self.fixture()
+        unrelated = self.root / "unrelated-1.0.0.tar.gz"
+        unrelated.write_bytes(b"untouched")
+        self.sanitize(metadata, assets)
+        self.assertFalse(target.exists())
+        self.assertEqual(unrelated.read_bytes(), b"untouched")
+        self.assertEqual(list(self.root.iterdir()), [unrelated])
+
+    def test_later_archive_without_fixture_is_preserved_byte_identically(self):
+        target, metadata, assets = self.fixture(entries=[("lib/auth.dart", tarfile.REGTYPE, b"library")], version="3.0.0")
+        before = target.read_bytes()
+        self.sanitize(metadata, assets)
+        self.assertEqual(target.read_bytes(), before)
+
+    def test_archive_checksum_or_pin_mismatch_fails_without_deletion(self):
+        target, metadata, assets = self.fixture()
+        before = target.read_bytes()
+        wrong_metadata = dict(metadata, archive_sha256="0" * 64)
+        with self.assertRaisesRegex(ValueError, "archive checksum mismatch"):
+            self.sanitize(wrong_metadata, assets)
+        wrong_pin = ((*assets[0][:4], {"2.3.2": "0" * 64}),)
+        with self.assertRaisesRegex(ValueError, "Known template archive changed"):
+            self.sanitize(metadata, wrong_pin)
+        self.assertEqual(target.read_bytes(), before)
+
+    def test_changed_duplicate_and_link_members_are_rejected(self):
+        member = "test/test_utils.dart"
+        for entries, message in (
+            ([(member, tarfile.REGTYPE, b"changed")], "Unexpected preload signing fixture content"),
+            ([(member, tarfile.REGTYPE, b"x"), (member, tarfile.REGTYPE, b"x")], "Unexpected preload signing fixture member"),
+            ([(member, tarfile.SYMTYPE, b"")], "Unexpected preload signing fixture member"),
+            ([(member, tarfile.LNKTYPE, b"")], "Unexpected preload signing fixture member"),
+        ):
+            with self.subTest(message=message):
+                target, metadata, assets = self.fixture(entries=entries)
+                before = target.read_bytes()
+                with self.assertRaisesRegex(ValueError, message):
+                    self.sanitize(metadata, assets)
+                self.assertEqual(target.read_bytes(), before)
+
+    def test_archive_path_symlink_and_parent_symlink_are_rejected(self):
+        target, metadata, assets = self.fixture()
+        real = target.with_name("real.tar.gz")
+        target.rename(real)
+        target.symlink_to(real)
+        with self.assertRaisesRegex(ValueError, "Unexpected preload archive path"):
+            self.sanitize(metadata, assets)
+        self.assertTrue(target.is_symlink())
+        target.unlink()
+        real.rename(target)
+        alias = self.root / "linked-root"
+        alias.symlink_to(self.root, target_is_directory=True)
+        with patch.object(sanitizer, "ASSETS", assets), self.assertRaisesRegex(ValueError, "Unexpected preload archive path"):
+            sanitizer.sanitize_preload(alias)
+        self.assertTrue(target.exists())
+
+    def test_metadata_failure_and_upstream_error_preserve_archive(self):
+        target, metadata, assets = self.fixture()
+        with self.assertRaisesRegex(ValueError, "Unexpected template package provenance"):
+            self.sanitize(dict(metadata, pubspec={"name": "wrong"}), assets)
+        with patch.object(sanitizer, "ASSETS", assets), patch.object(sanitizer, "fetch", side_effect=OSError("offline")):
+            with self.assertRaises(OSError):
+                sanitizer.sanitize_preload(self.root)
+        self.assertTrue(target.exists())
+
+    def test_missing_archives_do_not_fetch(self):
+        with patch.object(sanitizer, "fetch", side_effect=AssertionError("Unnecessary fetch")):
+            sanitizer.sanitize_preload(self.root)
+
+    def test_malformed_checksum_verified_archive_is_not_deleted(self):
+        target, metadata, assets = self.fixture()
+        target.write_bytes(b"not a tar archive")
+        checksum = hashlib.sha256(target.read_bytes()).hexdigest()
+        metadata["archive_sha256"] = checksum
+        assets = ((*assets[0][:4], {"2.3.2": checksum}),)
+        with self.assertRaises(tarfile.ReadError):
+            self.sanitize(metadata, assets)
+        self.assertEqual(target.read_bytes(), b"not a tar archive")
 
 
 if __name__ == "__main__":

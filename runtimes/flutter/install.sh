@@ -9,6 +9,7 @@ case "$1" in
     tar -xJf /tmp/flutter.tar.xz -C /opt
     rm /tmp/flutter.tar.xz
     python3 /usr/local/lib/flutter-runtime/sanitize-sdk-keys.py flutter
+    python3 /usr/local/lib/flutter-runtime/prepare-sdk-git.py
     flutter config --no-analytics --no-cli-animations
     # Universal artifacts and the Linux host engine support flutter_tester.
     flutter precache --linux --no-android --no-ios --no-web --no-macos --no-windows --no-fuchsia

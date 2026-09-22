@@ -130,13 +130,31 @@ class ContentAuditTests(unittest.TestCase):
     def test_worker_preserves_key_findings_in_failed_audit_evidence(self):
         import worker
         path = self.install("opt/sdk/private.pem", "key.pem")
-        (self.root / "toolchain.json").write_text('{"variant":"fixture"}')
+        (self.root / "toolchain.json").write_text('{"variant":"fixture", "selection":{}}')
         report = {}
         with patch.object(worker, "METADATA", self.root), \
-                patch.object(worker, "inspect_credentials", side_effect=self.report):
+                patch.object(worker, "inspect_credentials", side_effect=self.report), \
+                patch.object(worker, "inspect_sdk_git", return_value={"findings": []}), \
+                patch.object(worker, "inspect_preload_archives", return_value={"findings": []}):
             with self.assertRaisesRegex(ValueError, "Potential embedded credential"):
                 worker.audit(report)
         self.assertEqual(report["content_assessment"]["findings"][0]["path"], str(path))
+
+    def test_worker_rejects_retained_git_or_preload_findings_even_with_clean_filesystem(self):
+        import worker
+        (self.root / "toolchain.json").write_text('{"variant":"fixture", "selection":{}}')
+        for git_findings, archive_findings in ((["retained Git blob"], []),
+                                                ([], [{"path": "/opt/flutter/.pub-preload-cache/fixture.tar.gz"}])):
+            with self.subTest(git=git_findings, archives=archive_findings):
+                report = {}
+                with patch.object(worker, "METADATA", self.root), \
+                        patch.object(worker, "inspect_credentials", return_value={"findings": []}), \
+                        patch.object(worker, "inspect_sdk_git", return_value={"findings": git_findings}), \
+                        patch.object(worker, "inspect_preload_archives", return_value={"findings": archive_findings}):
+                    with self.assertRaisesRegex(ValueError, "Potential embedded credential"):
+                        worker.audit(report)
+                self.assertEqual(report["content_assessment"]["sdk_git"]["findings"], git_findings)
+                self.assertEqual(report["content_assessment"]["preload_archives"]["findings"], archive_findings)
 
     def test_jceks_secret_key_entry_is_rejected(self):
         self.assertTrue(content_audit.jks_has_key(self.store([2, 3], magic=0xCECECECE)))
