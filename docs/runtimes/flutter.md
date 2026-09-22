@@ -1,113 +1,84 @@
 # Shared Flutter runtime images
 
-## Purpose and support
+## Purpose and supported use
 
-Shared prebuilt runtimes let consumers verify Flutter applications without first building a project-specific toolchain image.
+Provide two shared Flutter images with minimal configuration: `slim` for Linux Flutter development tools and `full` for Android builds. Standard upstream distributions and native tool caching are sufficient; this offering does not certify application workloads or offline execution.
 
-- **FR-SUPPORT-01:** The images must support Linux AMD64 execution.
-- **FR-SUPPORT-02:** The lightweight image must support Dart and Flutter formatting, analysis, code generation, and unit and widget tests.
-- **FR-SUPPORT-03:** The lightweight image must provide its supported workloads without installation of the complete Android build toolchain.
-- **FR-SUPPORT-04:** The full image must provide all lightweight workloads and Flutter Android APK and AAB builds.
-- **FR-SUPPORT-05:** Both images must support execution with an arbitrary non-root UID when the consumer supplies the documented writable SDK and cache locations.
-- **FR-SUPPORT-06:** The images must not contain credentials or project-specific state.
+- **FR-SUPPORT-01:** Both images must support Linux AMD64 execution.
+- **FR-SUPPORT-02:** The slim image must provide the tools and host libraries for Dart and Flutter formatting, analysis, code generation, and unit and widget tests.
+- **FR-SUPPORT-03:** The slim image must not require the complete Android build toolchain.
+- **FR-SUPPORT-04:** The full image must provide the slim capabilities and the toolchain for Flutter Android APK and AAB builds.
+- **FR-SUPPORT-07:** Both images must use an ordinary non-root user by default.
+- **FR-SUPPORT-08:** The default image user must have writable SDK and cache locations.
+- **FR-SUPPORT-09:** The images must not embed operator secrets, application secrets, or private consumer project state.
 
-The Android support set includes JDK 21, SDK platforms 34, 35, and 36, Build Tools 35.0.0 and 36.0.0, NDK 28.2.13676358, and CMake 3.22.1. Android command-line tools and platform-tools are also required. The support set describes supported consumer requirements, not a claim that every combination of tool versions is compatible.
+Known public upstream test fixtures are not operational secrets. They may remain in official distributions, including public test keys. There is no claim that every image layer is free of all private-key-shaped content. Additional numeric UIDs require the documented ownership or group convention; arbitrary UID/GID combinations are not guaranteed.
 
-- **FR-ANDROID-01:** The full image must provide the Android support set and the Flutter Android artifacts required by supported builds.
-- **FR-ANDROID-02:** Each refresh must evaluate the Android tool set against the selected Flutter release and supported consumers' SDK, build-tools, NDK, CMake, JDK, and Gradle requirements.
-- **FR-ANDROID-03:** The tool selection policy must retain multiple required versions when this prevents toolchain downloads for supported consumers.
-- **FR-ANDROID-04:** Consumers must not need to change their SDK targets to use the documented support set.
-- **FR-ANDROID-05:** A refresh must not promote candidates that cannot satisfy the documented support set with the selected Flutter release.
+## Image contents and preparation
 
-## Toolchain readiness and provenance
+The full image's Android inventory is JDK 21, command-line tools, platform-tools, SDK platforms 34/35/36, Build Tools 35.0.0/36.0.0, NDK 28.2.13676358, and CMake 3.22.1. This inventory does not certify every combination of project dependencies and tool versions.
 
-- **FR-READY-01:** Image construction must complete toolchain installation, required Flutter artifact caching, and applicable noninteractive setup before publication.
-- **FR-READY-02:** A fresh lightweight container must run its supported workloads without downloading missing Flutter SDK artifacts.
-- **FR-READY-03:** A fresh full container must build supported APK and AAB artifacts without downloading missing Android SDK, platform, build-tools, NDK, CMake, or Flutter engine components covered by the support set.
-- **FR-READY-04:** Consumer documentation must distinguish project-specific Pub, Maven, and Gradle dependency downloads from toolchain downloads.
-- **FR-BASE-01:** The images must use the most authoritative suitable upstream base available.
-- **FR-BASE-02:** The base selection must prefer a suitable upstream-maintained official Flutter image when one is available.
-- **FR-BASE-03:** If no suitable official Flutter image is available, the base selection must prefer an official operating-system image with Flutter from its official upstream distribution.
-- **FR-BASE-04:** Consumer documentation must identify the selected base and explain its provenance and selection rationale.
+- **FR-ANDROID-01:** The full image must install the documented Android inventory and pre-cache Flutter Android artifacts with native tool commands.
+- **FR-ANDROID-04:** Consumers must not need to change their SDK targets to use the documented inventory.
+- **FR-READY-01:** Image construction must perform native toolchain installation, Flutter pre-caching, and applicable noninteractive setup.
+- **FR-READY-04:** Consumer documentation must distinguish toolchain downloads from project-specific Pub, Maven, and Gradle dependency downloads.
+- **FR-BASE-01:** The images must use an authoritative suitable upstream base.
+- **FR-BASE-04:** Consumer documentation must identify the base and the official Flutter distribution source.
 - **FR-BASE-05:** Consumer documentation must not describe a third-party Flutter image as official.
-- **FR-BASE-06:** Image preparation must avoid upgrading a stale, fully provisioned Flutter image when that duplicates SDK preparation and cached artifacts.
 
-Readiness takes priority over minimum image size. These images do not guarantee dependency-free cold builds for arbitrary applications.
+Native caches reduce preparation work but do not guarantee zero downloads. Project dependencies, cache misses, and tools outside the documented inventory may require downloads. Image size is secondary to ordinary toolchain readiness.
+
+## Approved delivery constraints
+
+The following constraints record the approved request; implementation details beyond these constraints remain with the implementation roles.
+
+- **FR-DELIVERY-01:** Each variant must have its own standard Dockerfile.
+- **FR-DELIVERY-02:** The full build must derive from the slim image built in the same run.
+- **FR-DELIVERY-03:** Pull requests must use a separate build-only workflow that does not publish images.
+- **FR-DELIVERY-04:** Weekly and manual publication must use a separate workflow that builds from `master`.
+- **FR-DELIVERY-05:** The workflows must not combine pull-request and publication behavior through per-job event conditions.
 
 ## Refresh and publication
 
 - **FR-RELEASE-01:** Publication automation must provide one scheduled refresh per week and an operator-triggered manual refresh.
-- **FR-RELEASE-02:** Each refresh must resolve the latest stable Flutter release available at build time without a fixed Flutter version in repository configuration.
+- **FR-RELEASE-02:** Each refresh must resolve the latest stable Flutter release once without a fixed Flutter release in repository configuration.
 - **FR-RELEASE-03:** Both variants in a publication must use the same resolved Flutter release.
 - **FR-RELEASE-04:** Each refresh must rebuild and publish both variants even when the stable Flutter release has not changed.
 - **FR-RELEASE-05:** Each published variant must expose the resolved Flutter version, Dart version, Flutter revision, and included toolchain versions for diagnostics.
 - **FR-RELEASE-06:** Recorded versions must not prevent automatic upgrades during later refreshes.
-- **FR-RELEASE-07:** Consumers must have documented public GHCR floating references for the lightweight and full variants.
-- **FR-RELEASE-08:** Each publication must provide immutable references or digests that identify both variants as members of the same build.
-- **FR-RELEASE-09:** Both candidates must pass validation before either advertised floating reference advances.
-- **FR-RELEASE-10:** A failed candidate build or validation must leave existing working floating references unchanged.
+- **FR-RELEASE-07:** Consumers must have documented public GHCR floating references named `slim` and `full`.
+- **FR-RELEASE-08:** Each publication must provide digests that identify both variants as members of the same build.
+- **FR-RELEASE-16:** Both image builds must succeed before the publication workflow publishes either variant's unique build reference or floating reference.
+- **FR-RELEASE-17:** A failed image build must leave existing published references unchanged.
 - **FR-RELEASE-11:** A failed refresh must leave the last successful published variants available.
 - **FR-RELEASE-12:** Refresh failures must appear in normal CI results.
-- **FR-RELEASE-13:** Consumer documentation must explain that floating-reference promotion is not transactional across the two variants.
-- **FR-RELEASE-14:** Consumer documentation must explain how consumers select a matching immutable pair when floating references temporarily identify different publications.
-- **FR-RELEASE-15:** Operator documentation must describe recovery from partial promotion without advertising an unvalidated candidate.
+- **FR-RELEASE-13:** Consumer documentation must explain that floating-reference publication is not transactional across the two variants.
+- **FR-RELEASE-14:** Consumer documentation must explain how to select a matching digest pair when floating references identify different publications.
 
-The matching-version guarantee applies to a publication pair. It does not promise that two independent floating-reference pulls always observe that pair during promotion. Container publication is separate from the [shared action release contract](../actions/semantic-releases.md).
+Unique build references identify each run; digest references provide immutable identity. A partial publication may update only one floating reference. Automated rollback, publication failure injection, and a custom promotion framework are not required. Container publication remains separate from shared GitHub Action version tags.
 
-## Consumer documentation
+## Documentation
 
-- **FR-DOCS-01:** Consumer documentation must provide pull and run examples for each variant and its intended workloads.
-- **FR-DOCS-02:** Consumer documentation must identify the supported architecture, weekly update policy, registry references, included tool versions, and Android tool selection policy.
-- **FR-DOCS-03:** Consumer documentation must describe required writable locations and cache mounts for supported non-root execution.
-- **FR-DOCS-04:** Consumer documentation must identify remaining first-run downloads and the limits of the supported workloads.
+- **FR-DOCS-01:** Consumer documentation must provide pull and run examples for both variants and their intended workloads.
+- **FR-DOCS-02:** Consumer documentation must identify AMD64 support, the weekly update policy, registry references, included tool versions, and the Android inventory policy.
+- **FR-DOCS-03:** Consumer documentation must describe writable locations and the ownership or group convention for additional numeric UIDs.
+- **FR-DOCS-04:** Consumer documentation must identify possible first-run downloads and the limits of the supported use.
 
-## Acceptance criteria
+## Acceptance and review readiness
 
-Each criterion below verifies the linked requirements; it does not define a separate behavior contract.
-
-| Criterion | Requirements | Required observation |
-| --- | --- | --- |
-| FR-AC-01 | FR-SUPPORT-01, FR-RELEASE-07, FR-RELEASE-08, FR-DOCS-01 | Both AMD64 variants are published and can be pulled from the documented registry references; pull/run examples identify their workloads and immutable publication pair. |
-| FR-AC-02 | FR-RELEASE-01 through FR-RELEASE-06 | Hosted refresh results show dynamic stable resolution, matching Flutter/Dart versions and revision, and toolchain metadata for both variants; the weekly schedule and manual trigger are available, and an unchanged Flutter release does not skip rebuilding either variant. |
-| FR-AC-03 | FR-SUPPORT-02, FR-SUPPORT-03, FR-READY-01, FR-READY-02 | A fresh lightweight container completes representative formatting, analysis, code generation, and unit/widget checks without Android installation or missing Flutter SDK artifact downloads. |
-| FR-AC-04 | FR-SUPPORT-04, FR-ANDROID-01 through FR-ANDROID-05, FR-READY-01, FR-READY-03, FR-READY-04 | Fresh full-container checks produce APK and AAB artifacts; the workload coverage identifies the supported consumer requirements exercised, the included tool set, and any downloads, with project dependencies reported separately. |
-| FR-AC-05 | FR-SUPPORT-05, FR-SUPPORT-06, FR-DOCS-03 | Representative checks succeed under an arbitrary non-root UID with documented writable locations and mounts; an image-content assessment finds no embedded credentials or project-specific state. |
-| FR-AC-06 | FR-BASE-01 through FR-BASE-06, FR-DOCS-02, FR-DOCS-04 | Documentation and build provenance identify the base, official Flutter source, selection rationale, update policy, architecture, Android tool policy, included versions, and remaining first-run downloads. |
-| FR-AC-07 | FR-RELEASE-09 through FR-RELEASE-15 | Controlled failure results show that a failed candidate build or check leaves working floating references unchanged and previous variants available; promotion results and recovery documentation identify nontransactional behavior and never advertise an unvalidated candidate. |
-
-### Review readiness and operational acceptance
-
-Review readiness and final operational acceptance are separate gates. Review readiness does not authorize merge or production publication.
-
-- **FR-GATE-01:** Review readiness must include validated, publicly pullable immutable candidates for both variants, with evidence tied to the implementation checkpoint and image digests.
-- **FR-GATE-02:** Review readiness must include the applicable workload, non-root, documentation, provenance, and measurement evidence for FR-AC-03 through FR-AC-06 and FR-EVIDENCE-01 through FR-EVIDENCE-03.
-- **FR-GATE-03:** Review readiness must include a controlled isolated rehearsal of the publication validation gate, with the failure condition and reference state recorded before and after the attempt.
-- **FR-GATE-04:** Review readiness must identify unobserved operational criteria as pending, with an evidence plan for completion after default-branch registration.
-- **FR-GATE-05:** Missing default-branch-only observations must not, by themselves, block review readiness.
-- **FR-GATE-06:** Final operational acceptance must satisfy all FR-AC criteria with evidence for the deployed publication behavior.
-
-For FR-GATE-03, an absent-candidate rejection that leaves isolated references unchanged can demonstrate the bounded rejection path. It does not demonstrate preservation of existing working production floating references or recovery from partial promotion. A rehearsal must not require mutation of working production references.
-
-The following observations remain pending until operational evidence is available:
-
-| Criterion | Operational evidence still required |
+| Criterion | Evidence sufficient for the criterion |
 | --- | --- |
-| FR-AC-01 | Public pulls from both advertised production floating references and identification of their immutable publication pair. |
-| FR-AC-02 | Hosted scheduled and manual refresh results, including a refresh that rebuilds both variants when the resolved Flutter release is unchanged. |
-| FR-AC-07 | Failure evidence that starts with existing working references and shows their preservation and continued availability; hosted promotion outcomes and documented partial-promotion recovery. |
+| **FR-AC-08** | Successful PR Docker builds of slim and full, tied to the reviewed source checkpoint, establish the required build sanity check. |
+| **FR-AC-09** | Source and documentation review confirms the two Dockerfiles, full inheritance from the same-run slim image, separate workflows, no PR publication, default non-root user, native installation/pre-caching, Android inventory, and exclusion of operator/application secrets and private project state. |
+| **FR-AC-10** | Source and documentation review confirms weekly/manual master publication, one dynamic stable resolution, rebuilding both variants without a version-change condition, build-before-publish ordering, references, metadata, and nontransactional publication limits. |
+| **FR-AC-11** | An authorized successful publication records both variants' unique and floating references and digests; ordinary public pulls confirm registry availability. |
 
-An authorized isolated hosted rehearsal of the deployed publication behavior may supply failure and partial-promotion evidence without disrupting consumer references. Such evidence must identify the behavior exercised and its correspondence to the deployed publication path. Absent production references or a successful candidate build alone cannot satisfy these operational observations. This gate distinction does not require a destructive production failure or change the nontransactional promotion contract.
+- **FR-GATE-07:** Review readiness must require FR-AC-08 through FR-AC-10 only.
+- **FR-GATE-08:** PR runtime sanity must require only successful Docker builds of both images.
+- **FR-GATE-09:** Publication availability under FR-AC-11 must remain pending until an authorized publication occurs.
 
-### Evidence and measurements
+No application test matrix, internal implementation tests, independent layer scan, arbitrary-UID certification, zero-download audit, performance benchmark, or failure-injection rehearsal is required. Source review is sufficient for schedule wiring and unchanged-version rebuild behavior; observed scheduled execution and repeated refreshes are not acceptance prerequisites. Review readiness does not authorize merge or production execution.
 
-- **FR-EVIDENCE-01:** Verification must record image build time and representative fresh-container startup and check times.
-- **FR-EVIDENCE-02:** Verification must report image-pull cost separately from preparation and execution inside the container.
-- **FR-EVIDENCE-03:** Verification must identify runtime toolchain downloads separately from project dependency downloads.
+## Non-goals
 
-These measurements establish observable preparation cost; they do not impose a numeric performance threshold. Credential-free synthetic projects may represent supported workloads without copying private consumer projects. Shared image refreshes do not require rebuilding images for every application change.
-
-For final acceptance, evidence must identify the immutable implementation checkpoint, image digests, workload and tool versions, execution UID and mounts, cache conditions, observations, and applicable acceptance criterion. Hosted publication evidence must include consumer pull results and promotion outcomes. Evidence for failure behavior must identify the failure condition and reference state before and after the attempt.
-
-## Boundaries
-
-The shared runtime offering includes image definitions, publication automation, consumer documentation, and focused image checks. It does not require consumer runtime-manifest migrations, emulator provisioning, device-farm provisioning, other architectures, or a change to shared GitHub Action version tags. It does not promise that arbitrary applications build without dependency downloads.
+This offering does not require consumer manifest migration, emulator or device-farm provisioning, additional architectures, legacy `lightweight` aliases, custom SDK sanitizers, modified Git object stores, a private Flutter engine mirror, or a bespoke runtime validation framework.
