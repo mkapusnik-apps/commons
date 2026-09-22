@@ -43,7 +43,7 @@ def classify_downloads(text):
     tooling = re.compile(
         r"\b(?:android-(?:arm|x64|x86)[\w-]*|linux-x64[\w-]*|Dart SDK|Flutter SDK|"
         r"flutter_patched_sdk\w*|Flutter tools|Material fonts|Gradle Wrapper|"
-        r"Android SDK|SDK Platforms?|platform-tools|build[- ]tools|NDK|CMake)\b|"
+        r"Android SDK|Android CLI|SDK Platforms?|platform-tools|build[- ]tools|NDK|CMake)\b|"
         r"\bplatforms;android-\d+", re.I)
     for line in text.splitlines():
         # Flutter/Gradle timestamps and Pub/CMake log prefixes are not events.

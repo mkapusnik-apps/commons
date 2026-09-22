@@ -147,6 +147,7 @@ Downloading https://dl.google.com/android/repository/platform-36.zip
             'Unzipping cmake/3.22.1......',
             '[ +1 ms] [ +2 ms] Downloading android-arm64-release/linux-x64 tools...',
             'Downloading Dart SDK', 'Downloading Flutter SDK',
+            'Downloading Android CLI...',
             'Downloading flutter_patched_sdk_product tools...',
             'Downloading Material fonts...', 'Downloading Gradle Wrapper...',
             'Downloading https://storage.googleapis.com/flutter_infra_release/flutter.zip',

@@ -57,6 +57,15 @@ class AndroidFixtureTests(unittest.TestCase):
         self.assertIn("compileSdk = 36", build)
         self.assertIn('buildToolsVersion = "36.0.0"', build)
 
+    def test_generated_fixture_uses_typed_compiler_options_with_matching_java_target(self):
+        worker.configure_android("sdk34")
+        build = (self.android / "app/build.gradle.kts").read_text()
+        self.assertNotIn("kotlinOptions", build)
+        self.assertIn("\nkotlin {\n    compilerOptions {", build)
+        self.assertIn("jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)", build)
+        self.assertIn("sourceCompatibility = JavaVersion.VERSION_17", build)
+        self.assertIn("targetCompatibility = JavaVersion.VERSION_17", build)
+
     def test_default_template_settings_are_not_rewritten(self):
         self.assertEqual(worker.configure_android("defaults"), "2.4.0")
         self.assertEqual(self.settings.read_text(), self.template)

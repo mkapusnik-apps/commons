@@ -12,7 +12,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = JavaVersion.VERSION_17.toString() }
     defaultConfig {
         applicationId = "org.commons.qualification.runtime_probe"
         minSdk = flutter.minSdkVersion
@@ -27,6 +26,11 @@ android {
         release {
             signingConfig = signingConfigs.getByName("debug")
         }
+    }
+}
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 flutter { source = "../.." }
