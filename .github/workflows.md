@@ -2,6 +2,17 @@
 
 This repository uses `master` as the canonical branch.
 
+## Flutter runtime images
+
+`Build Flutter runtimes (PR)` builds slim, then full from that local slim image.
+It has read-only repository access and does not publish images.
+`Publish Flutter runtimes` runs weekly and on manual dispatch from `master`.
+Both builds must succeed before it pushes unique references, then `slim` and `full`.
+Floating publication is not transactional. Previous unique references remain available.
+Container publication is separate from the shared action release contract.
+See [Flutter runtime operations](../runtimes/flutter/README.md) for commands,
+permissions, image references, and supported use.
+
 ## Action metadata validation
 
 `Validate GitHub Actions (Pull Request)` runs when a pull request to `master` changes `*/action.yml`.

@@ -1,0 +1,78 @@
+name: Publish Flutter runtimes
+
+on:
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flutter-runtime-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/mkapusnik-apps/commons/flutter
+      PUBLICATION: run-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Resolve latest stable Flutter once
+        id: flutter
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location \
+            https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json |
+            jq -er '. as $index | .releases[] |
+              select(.hash == $index.current_release.stable and .channel == "stable" and
+                (.dart_sdk_arch // "x64") == "x64") |
+              "url=\($index.base_url)/\(.archive)\nsha256=\(.sha256)\nversion=\(.version)\nrevision=\(.hash)"' \
+              >> "$GITHUB_OUTPUT"
+      - name: Build slim
+        run: |
+          docker build --builder default --platform linux/amd64 --pull --no-cache \
+            --file runtimes/flutter/slim.Dockerfile --tag commons-flutter:slim \
+            --build-arg FLUTTER_URL="${{ steps.flutter.outputs.url }}" \
+            --build-arg FLUTTER_SHA256="${{ steps.flutter.outputs.sha256 }}" \
+            --build-arg FLUTTER_VERSION="${{ steps.flutter.outputs.version }}" \
+            --build-arg FLUTTER_REVISION="${{ steps.flutter.outputs.revision }}" \
+            --build-arg SOURCE_REVISION="${{ github.sha }}" \
+            runtimes/flutter
+      - name: Build full from this run's slim
+        run: |
+          docker build --builder default --platform linux/amd64 --no-cache \
+            --file runtimes/flutter/full.Dockerfile --tag commons-flutter:full \
+            --build-arg SLIM_IMAGE=commons-flutter:slim runtimes/flutter
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish unique pair
+        shell: bash
+        run: |
+          for variant in slim full; do
+            ref="$IMAGE:$PUBLICATION-$variant"
+            docker tag "commons-flutter:$variant" "$ref"
+            docker push "$ref"
+            digest=$(docker image inspect "$ref" --format '{{index .RepoDigests 0}}')
+            printf '%s: %s = %s\n' "$variant" "$ref" "$digest" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Publish floating references
+        shell: bash
+        run: |
+          for variant in slim full; do
+            docker tag "$IMAGE:$PUBLICATION-$variant" "$IMAGE:$variant"
+            docker push "$IMAGE:$variant"
+            printf 'Published floating reference: %s:%s\n' "$IMAGE" "$variant" >> "$GITHUB_STEP_SUMMARY"
+          done
