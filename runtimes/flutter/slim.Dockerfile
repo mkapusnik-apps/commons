@@ -11,8 +11,8 @@ LABEL org.opencontainers.image.source="https://github.com/mkapusnik-apps/commons
       io.commons.flutter.revision="${FLUTTER_REVISION}" \
       io.commons.flutter.variant="slim"
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl git unzip xz-utils zip bash \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates curl git unzip xz-utils zip bash tzdata \
       libglu1-mesa libgtk-3-0 libstdc++6 clang cmake ninja-build pkg-config \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 flutter \
