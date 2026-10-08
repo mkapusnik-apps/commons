@@ -49,15 +49,11 @@ runs:
         packages: ${{ env.SETUP_FLUTTER_ANDROID_PACKAGES }}
 
     - name: Setup Flutter SDK
-      uses: subosito/flutter-action@v2
-      env:
-        PUB_CACHE: "${{ runner.temp }}/flutter-pub-cache"
+      uses: flutter-actions/setup-flutter@v4
       with:
         channel: stable
         cache: true
-        pub-cache: true
-        cache-path: "${{ runner.temp }}/flutter-sdk/:channel:-:version:-:arch:"
-        pub-cache-path: "${{ runner.temp }}/flutter-pub-cache"
+        cache-sdk: true
 
     - name: Configure Flutter CLI for CI
       shell: bash
