@@ -13,6 +13,7 @@ runs:
   using: composite
   steps:
     - name: Free disk space for Android build
+      if: ${{ runner.environment == 'github-hosted' && runner.os == 'Linux' }}
       uses: AdityaGarg8/remove-unwanted-software@v5
       with:
         remove-dotnet: true
