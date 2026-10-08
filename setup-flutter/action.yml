@@ -18,7 +18,8 @@ runs:
         remove-dotnet: true
         remove-haskell: true
         remove-codeql: true
-        remove-docker-images: true
+        remove-large-packages: true
+        remove-cached-tools: true
 
     - name: Setup Java SDK
       uses: actions/setup-java@v6
