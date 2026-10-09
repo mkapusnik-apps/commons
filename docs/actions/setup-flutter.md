@@ -28,6 +28,8 @@ The action declares no outputs.
 
 The runner must provide Bash and Git. The action installs Temurin Java 21 and the Android SDK packages. It also installs stable Flutter.
 
+Disk cleanup runs only on GitHub-hosted Linux runners. Self-hosted runner operators must provision and maintain sufficient disk capacity for Android builds; the action does not clean up those runners.
+
 The action enables Flutter SDK and Pub caching in the runner temporary directory. It marks the Flutter SDK as a safe Git directory. It disables analytics and CLI animations.
 
 ## Example
