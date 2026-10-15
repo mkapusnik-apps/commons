@@ -16,7 +16,7 @@ Use this action only when a workflow depends on the existing interface that acce
 | --- | --- | --- | --- |
 | `tag` | Yes | None | Tag name to create or update, without the `refs/tags/` prefix. |
 | `commit_sha` | No | Current workflow SHA | Commit SHA to tag. If omitted or blank, the action uses `context.sha`. |
-| `token` | Yes | None | GitHub token used for ref operations. Use a PAT or GitHub App token when downstream workflow triggering or cross-permission behavior requires it. |
+| `token` | No | `${{ github.token }}` | GitHub token used for ref operations. Use a PAT or GitHub App token when downstream workflow triggering or cross-permission behavior requires it. |
 
 ## Outputs
 
