@@ -4,11 +4,9 @@
 
 `Set Git Tag` creates or updates a lightweight tag in the current repository. Its existing inputs, interface, and behavior remain preserved at the new root consumer path, but callers must migrate to `mkapusnik-apps/commons/tag@v1`; the previous `.github/actions/tag` path is not retained.
 
-For new workflows, prefer [`Set Git Ref`](git-ref.md) with `ref: refs/tags/<tag-name>` because it has explicit outputs, stronger validation, repository selection, and configurable create/no-op behavior.
-
 ## User scenario
 
-Use this action only when a workflow depends on the existing interface that accepts a bare tag name and force-updates that tag in the current repository.
+Use this action when a workflow needs to create or force-update a lightweight tag in the current repository using a bare tag name.
 
 ## Inputs
 
@@ -47,4 +45,4 @@ The action fails when `tag` is empty, the token cannot read or mutate the ref, t
 - It always force-updates an existing tag after confirming that the exact ref exists.
 - Race-condition detection, retries, and recovery are not provided. If the ref changes between lookup and mutation, the resulting create or update failure remains visible.
 - It does not validate the tag name beyond checking that it is non-empty before calling GitHub.
-- It does not expose `previous_sha`, `new_sha`, or `changed`; use `Set Git Ref` when consumers need those outputs.
+- It does not expose `previous_sha`, `new_sha`, or `changed`.

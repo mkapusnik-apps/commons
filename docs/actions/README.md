@@ -7,9 +7,8 @@ This catalog documents the reusable GitHub Actions published from root-level dir
 | Action | Local path | Consumer reference | Use when | Documentation |
 | --- | --- | --- | --- | --- |
 | Setup Flutter for CI | `setup-flutter` | `mkapusnik-apps/commons/setup-flutter@v1` | Install and configure the shared stable Flutter toolchain for CI. | [setup-flutter.md](setup-flutter.md) |
-| Set Git Tag | `tag` | `mkapusnik-apps/commons/tag@v1` | Preserve the existing lightweight-tag interface. Prefer Set Git Ref for new work. | [tag.md](tag.md) |
+| Set Git Tag | `tag` | `mkapusnik-apps/commons/tag@v1` | Create or update a lightweight tag in the current repository. | [tag.md](tag.md) |
 | Create or Update Pull Request | `pull-request` | `mkapusnik-apps/commons/pull-request@v1` | Reuse one promotion or automation pull request for a stable head/base pair. | [pull-request.md](pull-request.md) |
-| Set Git Ref | `git-ref` | `mkapusnik-apps/commons/git-ref@v1` | Create or move any full Git ref, including branch and tag refs. | [git-ref.md](git-ref.md) |
 | Set Workflow State | `workflow-state` | `mkapusnik-apps/commons/workflow-state@v1` | Enable or disable a GitHub Actions workflow through the GitHub API. | [workflow-state.md](workflow-state.md) |
 | Lifecycle Tag Gate | `tag-gate` | `mkapusnik-apps/commons/tag-gate@v1` | Decide whether a lifecycle workflow should run by comparing source and target tags. | [tag-gate.md](tag-gate.md) |
 
@@ -40,7 +39,7 @@ The default `GITHUB_TOKEN` is usually enough only for the current repository whe
 - A reviewed full commit SHA is stricter pinning than `v1` because it cannot move when a compatible release is published.
 - Do not pin production consumers to a moving branch such as `master`.
 
-Release and floating-major tags must be published only after review and merge, and must point to the merged implementation that contains the documented action paths. Local workflows in this repository may use relative paths such as `./git-ref`.
+Release and floating-major tags must be published only after review and merge, and must point to the merged implementation that contains the documented action paths. Local workflows in this repository may use relative paths such as `./tag`.
 
 The repository's patch, manual-major, and compatibility contract is defined in [semantic-releases.md](semantic-releases.md). Consumers may use `v1`, fixed `v1.0`, or immutable `v1.0.0`.
 
