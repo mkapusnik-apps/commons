@@ -12,12 +12,14 @@ This catalog documents the reusable GitHub Actions published from root-level dir
 | Set Workflow State | `workflow-state` | `mkapusnik-apps/commons/workflow-state@v1` | Enable or disable a GitHub Actions workflow through the GitHub API. | [workflow-state.md](workflow-state.md) |
 | Lifecycle Tag Gate | `tag-gate` | `mkapusnik-apps/commons/tag-gate@v1` | Decide whether a lifecycle workflow should run by comparing source and target tags. | [tag-gate.md](tag-gate.md) |
 | Release Notes | `release-notes` | `mkapusnik-apps/commons/release-notes@v1` | Generate bounded, audience-facing text with Junie without publishing it. | [release-notes.md](release-notes.md) |
+| Next Version | `next-version` | `mkapusnik-apps/commons/next-version@v1` | Calculate a candidate version from checked-out numeric tags and a production baseline without writing state. | [next-version.md](next-version.md) |
 
 ## Common expectations
 
 - Inputs are strings supplied through `with:` blocks. Boolean-like inputs are documented per action because not every action parses them the same way.
 - Outputs are GitHub Actions step outputs and are always strings.
 - API-based actions use `actions/github-script@v8`.
+- Next Version uses `actions/github-script@v9` (Node 24) only as a wrapper for local Git reads; it does not call the GitHub API.
 - Refs, workflow state changes, and pull requests are not transactional across multiple action calls. If a workflow changes more than one repository resource, handle partial failure explicitly.
 
 ## Permissions and tokens
@@ -29,6 +31,7 @@ Grant only the permissions required by the action in the target repository:
 - Workflow state updates need `actions: write`.
 - Pull request creation or update needs `pull-requests: write`; auto-merge also requires repository settings and branch protection to allow auto-merge for the token.
 - Release-note generation needs `contents: read` and a caller-supplied Junie API key in a dedicated, minimally privileged job.
+- Next Version needs a caller checkout with complete tags/history and Git; the calculation needs no API access or write token. Same-repository checkout commonly uses `contents: read`.
 
 The default `GITHUB_TOKEN` is usually enough only for the current repository when workflow permissions allow the requested operation. Cross-repository writes generally require a fine-grained PAT or GitHub App token with access to the target repository.
 

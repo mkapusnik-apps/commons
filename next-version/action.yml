@@ -1,0 +1,43 @@
+name: Next Version
+description: Calculate the next candidate version from numeric tags and a production baseline.
+
+inputs:
+  baseline-tag:
+    description: Production marker tag whose commit identifies one numeric version tag.
+    required: true
+  fallback-tag:
+    description: Initial numeric baseline tag, used only when baseline-tag does not exist.
+    required: false
+    default: ''
+  annotation-prefix:
+    description: Literal annotation prefix without surrounding whitespace, followed by a space and X.Y.Z.
+    required: true
+  source-sha:
+    description: Optional source commit that must not already have a numeric tag. Omit for forecasts.
+    required: false
+    default: ''
+
+outputs:
+  name:
+    description: Next candidate version name in X.Y.Z format.
+    value: ${{ steps.calculate.outputs.name }}
+  code:
+    description: Next positive integer version code as a string.
+    value: ${{ steps.calculate.outputs.code }}
+
+runs:
+  using: composite
+  steps:
+    - id: calculate
+      uses: actions/github-script@v9
+      env:
+        NEXT_VERSION_ACTION_PATH: ${{ github.action_path }}
+        NEXT_VERSION_BASELINE_TAG: ${{ inputs.baseline-tag }}
+        NEXT_VERSION_FALLBACK_TAG: ${{ inputs.fallback-tag }}
+        NEXT_VERSION_ANNOTATION_PREFIX: ${{ inputs.annotation-prefix }}
+        NEXT_VERSION_SOURCE_SHA: ${{ inputs.source-sha }}
+      with:
+        script: |
+          const path = require('node:path');
+          const { run } = require(path.join(process.env.NEXT_VERSION_ACTION_PATH, 'calculate.cjs'));
+          run({ core, env: process.env });

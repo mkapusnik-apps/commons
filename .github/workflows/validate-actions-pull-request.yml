@@ -6,6 +6,7 @@ on:
       - master
     paths:
       - '*/action.yml'
+      - 'next-version/**'
       - 'release-notes/**'
       - '.github/scripts/test-release-notes.py'
       - '.github/scripts/semantic-release.js'
@@ -20,6 +21,19 @@ permissions:
   contents: read
 
 jobs:
+  next-version-tests:
+    name: Test next version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Test version calculation
+        run: node --test next-version/calculate.test.cjs
+
   release-notes-tests:
     name: Test release notes
     runs-on: ubuntu-latest
