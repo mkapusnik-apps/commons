@@ -6,11 +6,23 @@ on:
       - master
     paths:
       - '*/action.yml'
+      - 'release-notes/**'
+      - '.github/scripts/test-release-notes.py'
+      - '.github/workflows/validate-actions-pull-request.yml'
 
 permissions:
   contents: read
 
 jobs:
+  release-notes-tests:
+    name: Test release notes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Test local Git context and note validation
+        run: python3 .github/scripts/test-release-notes.py
+
   yaml-syntax:
     name: Validate action YAML syntax
     runs-on: ubuntu-latest

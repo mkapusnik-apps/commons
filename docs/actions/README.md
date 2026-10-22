@@ -11,6 +11,7 @@ This catalog documents the reusable GitHub Actions published from root-level dir
 | Create or Update Pull Request | `pull-request` | `mkapusnik-apps/commons/pull-request@v1` | Reuse one promotion or automation pull request for a stable head/base pair. | [pull-request.md](pull-request.md) |
 | Set Workflow State | `workflow-state` | `mkapusnik-apps/commons/workflow-state@v1` | Enable or disable a GitHub Actions workflow through the GitHub API. | [workflow-state.md](workflow-state.md) |
 | Lifecycle Tag Gate | `tag-gate` | `mkapusnik-apps/commons/tag-gate@v1` | Decide whether a lifecycle workflow should run by comparing source and target tags. | [tag-gate.md](tag-gate.md) |
+| Release Notes | `release-notes` | `mkapusnik-apps/commons/release-notes@v1` | Generate bounded, audience-facing text with Junie without publishing it. | [release-notes.md](release-notes.md) |
 
 ## Common expectations
 
@@ -27,6 +28,7 @@ Grant only the permissions required by the action in the target repository:
 - Tag gate reads need repository tag access; same-repository workflows commonly use `contents: read` with checkout.
 - Workflow state updates need `actions: write`.
 - Pull request creation or update needs `pull-requests: write`; auto-merge also requires repository settings and branch protection to allow auto-merge for the token.
+- Release-note generation needs `contents: read` and a caller-supplied Junie API key in a dedicated, minimally privileged job.
 
 The default `GITHUB_TOKEN` is usually enough only for the current repository when workflow permissions allow the requested operation. Cross-repository writes generally require a fine-grained PAT or GitHub App token with access to the target repository.
 
