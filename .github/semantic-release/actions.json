@@ -2,6 +2,7 @@
   "schema": 2,
   "actionDirectories": [
     "pull-request",
+    "release-notes",
     "setup-flutter",
     "tag",
     "tag-gate",

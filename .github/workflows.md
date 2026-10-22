@@ -15,17 +15,23 @@ permissions, image references, and supported use.
 
 ## Action metadata validation
 
-`Validate GitHub Actions (Pull Request)` runs when a pull request to `master` changes `*/action.yml`.
-It validates YAML syntax.
+`Validate GitHub Actions (Pull Request)` validates action YAML syntax on pull
+requests to `master`.
 
-`Validate GitHub Actions (Push)` runs when a push to `master` changes `*/action.yml`.
-It validates action metadata against the pinned SchemaStore schema.
+`Validate GitHub Actions (Push)` validates action metadata against the pinned
+SchemaStore schema on pushes to `master`.
+
+Both workflows run for changes to `*/action.yml`, `release-notes/**`,
+`.github/scripts/test-release-notes.py`, or their own workflow file. They also
+run `python3 .github/scripts/test-release-notes.py` to test local Git context,
+note validation, and session cleanup without calling Junie.
 
 Both workflows have `contents: read` permission.
 They require no secret and publish no artifact.
 
 If validation fails, inspect the named `action.yml` file.
-Workflow-only changes require static review because they do not start these workflows.
+Changes to other workflow files require static review because they do not start
+these workflows.
 
 ## Release scope
 

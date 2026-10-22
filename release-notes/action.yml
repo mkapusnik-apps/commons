@@ -1,0 +1,133 @@
+name: Release Notes
+description: Generate bounded, user-facing release notes with Junie, without publishing them.
+
+inputs:
+  source_sha:
+    description: Full commit SHA of the detached checkout.
+    required: true
+  baseline_sha:
+    description: Captured baseline commit SHA; mutually exclusive with baseline_ref.
+    default: ''
+  baseline_ref:
+    description: Fully qualified local ref to resolve once; mutually exclusive with baseline_sha.
+    default: ''
+  missing_baseline_policy:
+    description: 'error or bounded-history (explicit first-release history without an empty-tree diff).'
+    default: error
+  audience:
+    description: Intended readers of the release notes.
+    required: true
+  language:
+    description: Output language.
+    default: English
+  max_characters:
+    description: Maximum number of Unicode code points, including whitespace.
+    required: true
+  empty_message:
+    description: Exact text for an unchanged source or no meaningful audience-facing changes.
+    required: true
+  instructions_file:
+    description: Optional project-specific content instructions, relative to the checkout root.
+    default: ''
+  max_commits:
+    description: Maximum number of first-parent commit subjects supplied to Junie.
+    default: '40'
+  max_files:
+    description: Maximum number of changed file names supplied to Junie.
+    default: '80'
+  junie_api_key:
+    description: Junie secret, explicitly supplied by the caller.
+    required: true
+
+outputs:
+  notes:
+    description: Validated release-note text; no file handoff is required.
+    value: ${{ steps.result.outputs.notes }}
+  status:
+    description: generated or no_changes.
+    value: ${{ steps.result.outputs.status }}
+  source_sha:
+    description: Resolved source commit SHA.
+    value: ${{ steps.context.outputs.source_sha }}
+  baseline_sha:
+    description: Resolved baseline commit SHA, empty for an explicit first release.
+    value: ${{ steps.context.outputs.baseline_sha }}
+  context_truncated:
+    description: Whether the history or file list exceeded its configured limit.
+    value: ${{ steps.context.outputs.context_truncated }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve immutable source context
+      id: context
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        SOURCE_SHA: ${{ inputs.source_sha }}
+        BASELINE_SHA: ${{ inputs.baseline_sha }}
+        BASELINE_REF: ${{ inputs.baseline_ref }}
+        MISSING_BASELINE_POLICY: ${{ inputs.missing_baseline_policy }}
+        AUDIENCE: ${{ inputs.audience }}
+        LANGUAGE: ${{ inputs.language }}
+        MAX_CHARACTERS: ${{ inputs.max_characters }}
+        EMPTY_MESSAGE: ${{ inputs.empty_message }}
+        INSTRUCTIONS_FILE: ${{ inputs.instructions_file }}
+        MAX_COMMITS: ${{ inputs.max_commits }}
+        MAX_FILES: ${{ inputs.max_files }}
+      run: python3 "$ACTION_PATH/release_notes.py" context
+
+    - name: Prepare isolated Junie session
+      id: session
+      if: steps.context.outputs.unchanged != 'true'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        SOURCE_SHA: ${{ inputs.source_sha }}
+      run: python3 "$ACTION_PATH/release_notes.py" session
+
+    - name: Generate audience-facing text
+      id: junie
+      if: steps.context.outputs.unchanged != 'true'
+      uses: JetBrains/junie-github-action@v1
+      env:
+        HOME: ${{ steps.session.outputs.directory }}/home
+        PATH: ${{ steps.session.outputs.path }}
+        TMPDIR: ${{ steps.session.outputs.directory }}/tmp
+        BUN_INSTALL: ${{ steps.session.outputs.directory }}/home/.bun
+        BUN_INSTALL_CACHE_DIR: ${{ steps.session.outputs.directory }}/home/.bun/install/cache
+        XDG_CONFIG_HOME: ${{ steps.session.outputs.directory }}/home/.config
+        XDG_CACHE_HOME: ${{ steps.session.outputs.directory }}/home/.cache
+        XDG_DATA_HOME: ${{ steps.session.outputs.directory }}/home/.local/share
+        XDG_STATE_HOME: ${{ steps.session.outputs.directory }}/home/.local/state
+        JUNIE_DATA: ${{ steps.session.outputs.directory }}/home/.local/share/junie
+        JUNIE_LOG_DIR: ${{ steps.session.outputs.directory }}/home/.junie/logs
+        JUNIE_VERSION: ''
+      with:
+        junie_api_key: ${{ inputs.junie_api_key }}
+        base_branch: ${{ steps.session.outputs.branch }}
+        silent_mode: true
+        skip_feedback: true
+        attach_github_context_to_custom_prompt: false
+        allowed_mcp_servers: ''
+        junie_work_dir: ${{ steps.session.outputs.directory }}/work
+        prompt: ${{ steps.context.outputs.prompt }}
+
+    - name: Validate and expose notes
+      id: result
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        NOTES: ${{ steps.context.outputs.unchanged == 'true' && inputs.empty_message || steps.junie.outputs.junie_summary }}
+        EMPTY_MESSAGE: ${{ inputs.empty_message }}
+        MAX_CHARACTERS: ${{ inputs.max_characters }}
+      run: python3 "$ACTION_PATH/release_notes.py" result
+
+    - name: Remove session and restore local refs
+      if: always() && steps.session.outputs.directory != ''
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        SESSION_DIRECTORY: ${{ steps.session.outputs.directory }}
+        SOURCE_SHA: ${{ inputs.source_sha }}
+      run: python3 "$ACTION_PATH/release_notes.py" cleanup
