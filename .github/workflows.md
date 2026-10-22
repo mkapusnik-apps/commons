@@ -21,11 +21,13 @@ requests to `master`.
 `Validate GitHub Actions (Push)` validates action metadata against the pinned
 SchemaStore schema on pushes to `master`.
 
-Both workflows run for changes to `*/action.yml`, `release-notes/**`,
+Both workflows run for changes to `*/action.yml`, `next-version/**`, `release-notes/**`,
 `.github/scripts/test-release-notes.py`, `.github/scripts/semantic-release.js`,
 `.github/scripts/test-semantic-release.js`, `.github/semantic-release/actions.json`,
 either publication workflow, or either action validation workflow. They run:
 
+- `node --test next-version/calculate.test.cjs` with Node 24 in a separate job
+  for version calculation rules.
 - `python3 .github/scripts/test-release-notes.py` for local Git context,
   note validation, and session cleanup without Junie.
 - `node --test .github/scripts/test-semantic-release.js` with Node 24 for mocked

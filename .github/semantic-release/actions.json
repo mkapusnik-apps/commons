@@ -1,6 +1,7 @@
 {
   "schema": 2,
   "actionDirectories": [
+    "next-version",
     "pull-request",
     "release-notes",
     "setup-flutter",

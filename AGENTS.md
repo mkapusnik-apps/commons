@@ -3,7 +3,7 @@
 ## Project
 
 Repository for shared tools, GitHub Actions, and their specifications:
-- Root-level action directories (`setup-flutter`, `tag`, `pull-request`, `workflow-state`, `tag-gate`, and `release-notes`) - shared actions reusable across similar products
+- Root-level action directories (`setup-flutter`, `tag`, `pull-request`, `workflow-state`, `tag-gate`, `release-notes`, and `next-version`) - shared actions reusable across similar products
 - `docs` - specifications of the features
 
 ## Branching Strategy
