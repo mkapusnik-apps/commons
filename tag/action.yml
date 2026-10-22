@@ -1,7 +1,7 @@
 name: Set Git Tag
 
 description: |
-  Create or update a lightweight Git tag pointing to a given commit SHA.
+  Create or update a lightweight or annotated Git tag pointing to a given commit SHA.
   Useful for marking builds like "sanity", "latest", etc.
 
 inputs:
@@ -11,6 +11,14 @@ inputs:
   commit_sha:
     description: Commit SHA to tag. Defaults to context.sha.
     required: false
+  message:
+    description: Annotation message. Empty creates a lightweight tag; whitespace is preserved.
+    required: false
+    default: ''
+  create-only:
+    description: Fail if the tag already exists instead of updating it.
+    required: false
+    default: 'false'
   token:
     description: GitHub token used for ref operations (use PAT to trigger downstream workflows).
     required: false
@@ -33,6 +41,8 @@ runs:
           };
 
           const sha = (process.env.TAG_COMMIT_SHA ?? '').trim() || context.sha;
+          const message = process.env.TAG_MESSAGE ?? '';
+          const createOnly = (process.env.TAG_CREATE_ONLY ?? 'false').trim().toLowerCase() === 'true';
           const ref = `refs/tags/${tag}`;
           const apiRef = `tags/${tag}`;
 
@@ -53,10 +63,26 @@ runs:
             }
           }
 
+          if (exists && createOnly) {
+            throw new Error(`Tag ${ref} already exists; create-only does not update existing tags`);
+          }
+
+          let refSha = sha;
+          if (message !== '') {
+            try {
+              const { data } = await github.rest.git.createTag({
+                ...props, tag, message, object: sha, type: 'commit',
+              });
+              refSha = data.sha;
+            } catch (error) {
+              throw new Error(`Failed to create annotation for ${ref}: ${describeError(error)}`);
+            }
+          }
+
           if (exists) {
             core.info(`Updating ${ref} to ${sha}`);
             try {
-              await github.rest.git.updateRef({ ...props, ref: apiRef, sha, force: true });
+              await github.rest.git.updateRef({ ...props, ref: apiRef, sha: refSha, force: true });
             } catch (error) {
               throw new Error(`Failed to update ${ref}: ${describeError(error)}`);
             }
@@ -64,7 +90,7 @@ runs:
           } else {
             core.info(`Creating ${ref} at ${sha}`);
             try {
-              await github.rest.git.createRef({ ...props, ref, sha });
+              await github.rest.git.createRef({ ...props, ref, sha: refSha });
             } catch (error) {
               throw new Error(`Failed to create ${ref}: ${describeError(error)}`);
             }
@@ -73,3 +99,5 @@ runs:
       env:
         TAG_NAME: ${{ inputs.tag }}
         TAG_COMMIT_SHA: ${{ inputs.commit_sha }}
+        TAG_MESSAGE: ${{ inputs.message }}
+        TAG_CREATE_ONLY: ${{ inputs.create-only }}

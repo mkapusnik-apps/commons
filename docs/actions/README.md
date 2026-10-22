@@ -7,7 +7,7 @@ This catalog documents the reusable GitHub Actions published from root-level dir
 | Action | Local path | Consumer reference | Use when | Documentation |
 | --- | --- | --- | --- | --- |
 | Setup Flutter for CI | `setup-flutter` | `mkapusnik-apps/commons/setup-flutter@v1` | Install and configure the shared stable Flutter toolchain for CI. | [setup-flutter.md](setup-flutter.md) |
-| Set Git Tag | `tag` | `mkapusnik-apps/commons/tag@v1` | Create or update a lightweight tag in the current repository. | [tag.md](tag.md) |
+| Set Git Tag | `tag` | `mkapusnik-apps/commons/tag@v1` | Create or update a lightweight or annotated tag, with optional create-only mode. | [tag.md](tag.md) |
 | Create or Update Pull Request | `pull-request` | `mkapusnik-apps/commons/pull-request@v1` | Reuse one promotion or automation pull request for a stable head/base pair. | [pull-request.md](pull-request.md) |
 | Set Workflow State | `workflow-state` | `mkapusnik-apps/commons/workflow-state@v1` | Enable or disable a GitHub Actions workflow through the GitHub API. | [workflow-state.md](workflow-state.md) |
 | Lifecycle Tag Gate | `tag-gate` | `mkapusnik-apps/commons/tag-gate@v1` | Decide whether a lifecycle workflow should run by comparing source and target tags. | [tag-gate.md](tag-gate.md) |
