@@ -153,10 +153,19 @@ async function exposedContentChanged(github, props, baseSha, headSha) {
   return { changed: changedPaths.length > 0, changedPaths };
 }
 
-async function releaseState(github, props) {
+function recordRequestId(response, requestIds) {
+  const id = response?.headers?.['x-github-request-id'];
+  if (id) requestIds.add(id);
+}
+
+async function readReleaseState(github, props, perPage, requestIds) {
+  const collect = (response) => {
+    recordRequestId(response, requestIds);
+    return response.data;
+  };
   const [refs, releaseItems] = await Promise.all([
-    github.paginate(github.rest.git.listMatchingRefs, { ...props, ref: 'tags/v', per_page: 100 }),
-    github.paginate(github.rest.repos.listReleases, { ...props, per_page: 100 }),
+    github.paginate(github.rest.git.listMatchingRefs, { ...props, ref: 'tags/v', per_page: 100, page: 1 }, collect),
+    github.paginate(github.rest.repos.listReleases, { ...props, per_page: perPage, page: 1 }, collect),
   ]);
   const immutable = [];
   for (const ref of refs) {
@@ -169,20 +178,92 @@ async function releaseState(github, props) {
   for (const release of releaseItems) {
     if (!versionFromTag(release.tag_name)) continue;
     if (releases.has(release.tag_name)) fail(`Multiple releases use ${release.tag_name}`);
+    if (release.prerelease) fail(`${release.tag_name} must not be a prerelease`);
     releases.set(release.tag_name, release);
+  }
+  // The tag endpoint corroborates omissions, including a newer published release
+  // omitted from an otherwise non-empty list. Drafts still need the list view.
+  const unlisted = immutable.filter((item) => !releases.has(item.tag)).map((item) => item.tag);
+  for (const item of immutable) {
+    const listed = releases.get(item.tag);
+    if (listed && !listed.draft) continue;
+    try {
+      const response = await github.rest.repos.getReleaseByTag({ ...props, tag: item.tag });
+      recordRequestId(response, requestIds);
+      const release = response.data;
+      if (release.tag_name !== item.tag) fail(`Release lookup for ${item.tag} returned ${release.tag_name}`);
+      if (release.prerelease) fail(`${item.tag} must not be a prerelease`);
+      if (listed && listed.id !== release.id) fail(`Conflicting release IDs for ${item.tag}`);
+      releases.set(item.tag, release);
+    } catch (error) {
+      recordRequestId(error.response, requestIds);
+      if (error.status !== 404) throw error;
+    }
   }
   const published = immutable.filter((item) => {
     const release = releases.get(item.tag);
     if (!release) return false;
-    if (release.prerelease) fail(`${item.tag} must not be a prerelease`);
     return !release.draft;
   });
-  for (const [tag, release] of releases) {
-    if (!immutable.some((item) => item.tag === tag)) fail(`Release ${tag} has no immutable tag`);
-    if (release.prerelease) fail(`${tag} must not be a prerelease`);
+  return { immutable, releases, published, latest: published.at(-1), unlisted, listedCount: releaseItems.length };
+}
+
+async function releaseState(github, props, {
+  target = null, requireRelease = false, releaseId = null, published = false,
+} = {}) {
+  const observedPublished = new Map();
+  for (let attempt = 1; attempt <= VERIFY_ATTEMPTS; attempt += 1) {
+    const requestIds = new Set();
+    let state;
+    try {
+      // A different page size is another fully paginated view, not a new baseline.
+      state = await readReleaseState(github, props, attempt % 2 ? 100 : 30, requestIds);
+    } catch (error) {
+      recordRequestId(error.response, requestIds);
+      fail(`${error.message}; release read attempt=${attempt}/${VERIFY_ATTEMPTS} request_ids=${[...requestIds].join(',') || '(unavailable)'}`, error);
+    }
+    const { immutable, releases } = state;
+    const missing = immutable.filter((item) => !releases.has(item.tag)).map((item) => item.tag);
+    const drafts = [...releases].filter(([, release]) => release.draft).map(([tag]) => tag);
+    const orphaned = [...releases.keys()].filter((tag) => !immutable.some((item) => item.tag === tag));
+    const detail = [
+      `attempt=${attempt}/${VERIFY_ATTEMPTS} refs=${immutable.length} listed=${state.listedCount} published=${state.published.length}`,
+      `unlisted=${state.unlisted.join(',') || '(none)'} missing=${missing.join(',') || '(none)'} drafts=${drafts.join(',') || '(none)'}`,
+      `request_ids=${[...requestIds].join(',') || '(unavailable)'}`,
+    ].join(' ');
+    for (const item of immutable) {
+      const previous = observedPublished.get(item.tag);
+      if (previous && (previous.sha !== item.sha || (releases.has(item.tag) && previous.id !== releases.get(item.tag).id))) {
+        fail(`Published identity changed for ${item.tag} during release reads; ${detail}`);
+      }
+    }
+    for (const item of state.published) observedPublished.set(item.tag, { sha: item.sha, id: releases.get(item.tag).id });
+    const regressed = [...observedPublished.keys()].filter((tag) => !state.published.some((item) => item.tag === tag));
+    const expectedTag = target && immutable.find((item) => item.tag === target.tag);
+    const expectedRelease = target && releases.get(target.tag);
+    if (expectedTag && expectedTag.sha !== target.sha) fail(`${target.tag} is not immutable at ${target.sha}; ${detail}`);
+    if (expectedRelease && releaseId !== null && expectedRelease.id !== releaseId) fail(`Conflicting release IDs for ${target.tag}; ${detail}`);
+    let problem = !state.latest ? 'No published stable semantic release exists' : null;
+    if (orphaned.length) problem = `Releases have no immutable tag: ${orphaned.join(', ')}`;
+    if (regressed.length) problem = `Previously published releases are no longer visible: ${regressed.join(', ')}`;
+    if (target && !expectedTag) problem = `${target.tag} is not readable at ${target.sha}`;
+    if (requireRelease && !expectedRelease) problem = `Release ${target.tag} is not readable`;
+    if (published && (!expectedRelease || expectedRelease.draft)) problem = `${target.tag} is not published at ${target.sha}`;
+    // An absent/draft release can be a real partial. Observe it for the bounded
+    // window before the existing partial-state authorization rules evaluate it.
+    const unsettled = [...state.unlisted, ...missing, ...drafts].some((tag) => tag !== target?.tag);
+    if (!problem && !unsettled) {
+      if (state.unlisted.length) console.info(`Release reads reconciled: ${detail}`);
+      return state;
+    }
+    if (attempt === VERIFY_ATTEMPTS) {
+      if (problem) fail(`${problem}; ${detail}`);
+      console.info(`Release read window complete: ${detail}`);
+      return state;
+    }
+    console.info(`Waiting for release reads: ${problem || 'unlisted, absent or draft semantic releases'}; ${detail}`);
+    await new Promise((resolve) => setTimeout(resolve, Math.min(attempt * 1000, 2000)));
   }
-  if (published.length === 0) fail('No published stable semantic release exists');
-  return { immutable, releases, published, latest: published.at(-1) };
 }
 
 async function masterSha(github, props) {
@@ -203,23 +284,21 @@ async function createRef(github, props, tag, sha) {
   }
 }
 
-async function ensureDraft(github, props, state, tag, sha, mode) {
-  const existing = state.releases.get(tag);
-  if (existing) return existing;
+async function ensureDraft(github, props, state, target, mode) {
+  const { tag, sha } = target;
+  if (state.releases.has(tag)) return state;
+  let releaseId = null;
   try {
-    return (await github.rest.repos.createRelease({
+    const response = await github.rest.repos.createRelease({
       ...props, tag_name: tag, target_commitish: sha, name: tag,
       body: `${mode} release of ${sha}.`, draft: true, prerelease: false,
-    })).data;
+    });
+    releaseId = response.data.id;
   } catch (error) {
     if (error.status !== 422) throw error;
-    for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt += 1) {
-      const refreshed = await releaseState(github, props);
-      if (refreshed.releases.has(tag)) return refreshed.releases.get(tag);
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    }
-    fail(`Release ${tag} conflicted but did not become readable`, error);
+    console.info(`Release ${tag} creation returned 422; checking read visibility; request_id=${error.response?.headers?.['x-github-request-id'] || '(unavailable)'}`);
   }
+  return releaseState(github, props, { target, requireRelease: true, releaseId });
 }
 
 async function moveFloating(github, props, target, sha, state) {
@@ -245,9 +324,7 @@ async function moveFloating(github, props, target, sha, state) {
 }
 
 async function verifyCompleted(github, props, target) {
-  const state = await releaseState(github, props);
-  const item = state.published.find((release) => release.tag === target.tag && release.sha === target.sha);
-  if (!item) fail(`${target.tag} is not published at ${target.sha}`);
+  await releaseState(github, props, { target, requireRelease: true, published: true });
   const floating = await getRef(github, props, `tags/v${target.major}`);
   if (!floating || await resolveCommit(github, props, floating.object) !== target.sha) {
     fail(`Floating tag v${target.major} does not identify ${target.tag}`);
@@ -343,16 +420,14 @@ async function inspectPartialMajor(github, props, state, targetSha) {
 }
 
 async function finishPublication(github, props, core, target, mode) {
-  let state = await releaseState(github, props);
-  const immutable = state.immutable.find((item) => item.tag === target.tag);
-  if (!immutable || immutable.sha !== target.sha) fail(`${target.tag} is not immutable at ${target.sha}`);
-  const release = await ensureDraft(github, props, state, target.tag, target.sha, mode);
+  let state = await releaseState(github, props, { target });
+  state = await ensureDraft(github, props, state, target, mode);
+  const release = state.releases.get(target.tag);
   if (!release.draft) {
     await verifyCompleted(github, props, target);
     core.info(`revision=${target.sha} outcome=already-published version=${target.tag}`);
     return;
   }
-  state = await releaseState(github, props);
   await moveFloating(github, props, target, target.sha, state);
   await github.rest.repos.updateRelease({
     ...props, release_id: release.id, tag_name: target.tag, target_commitish: target.sha,

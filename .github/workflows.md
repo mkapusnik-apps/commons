@@ -22,16 +22,21 @@ requests to `master`.
 SchemaStore schema on pushes to `master`.
 
 Both workflows run for changes to `*/action.yml`, `release-notes/**`,
-`.github/scripts/test-release-notes.py`, or their own workflow file. They also
-run `python3 .github/scripts/test-release-notes.py` to test local Git context,
-note validation, and session cleanup without calling Junie.
+`.github/scripts/test-release-notes.py`, `.github/scripts/semantic-release.js`,
+`.github/scripts/test-semantic-release.js`, `.github/semantic-release/actions.json`,
+either publication workflow, or either action validation workflow. They run:
+
+- `python3 .github/scripts/test-release-notes.py` for local Git context,
+  note validation, and session cleanup without Junie.
+- `node --test .github/scripts/test-semantic-release.js` with Node 24 for mocked
+  release-state reads and publication rules without GitHub writes.
 
 Both workflows have `contents: read` permission.
 They require no secret and publish no artifact.
 
-If validation fails, inspect the named `action.yml` file.
-Changes to other workflow files require static review because they do not start
-these workflows.
+If metadata validation fails, inspect the named `action.yml` file.
+If a test fails, inspect its failure output.
+Other workflow files do not start these checks and require static review.
 
 ## Release scope
 
@@ -101,6 +106,22 @@ The operator must re-dispatch the manual workflow against current `master` when 
 The publisher creates immutable tags without force.
 It moves a floating major only from a recognized older release and uses a Git lease.
 It rejects immutable conflicts, unknown partial states, unknown floating targets, and backward floating moves.
+
+The publisher reads all pages of semantic refs and releases, starting at page 1.
+It checks omitted semantic tags with the release-by-tag endpoint before it
+classifies a release as absent. The release list remains necessary for drafts.
+It selects the highest published stable semantic version, not GitHub's latest-release ordering.
+
+For incomplete read visibility, it makes up to six read attempts.
+The release-list page size alternates between 100 and 30. Both views use full pagination.
+The delay is one second before the second attempt and two seconds before each later attempt.
+The same read limit applies while a created draft or published release becomes visible,
+including a release creation that returns HTTP 422.
+These reads do not repeat writes or authorize a partial release.
+After the read window, an absent or draft release must pass the existing recovery rules.
+A missing stable baseline, persistent read contradiction, or unreadable expected release stops publication.
+Authentication failures and invalid release identities stop immediately.
+Read diagnostics show counts, missing tags, attempts, and available GitHub request IDs.
 
 An automatic run accepts one exact incomplete next-patch tag.
 The tag must contain a scoped change from the latest stable release.
