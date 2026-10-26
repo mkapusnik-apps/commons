@@ -18,7 +18,7 @@ This catalog documents the reusable GitHub Actions published from root-level dir
 
 - Inputs are strings supplied through `with:` blocks. Boolean-like inputs are documented per action because not every action parses them the same way.
 - Outputs are GitHub Actions step outputs and are always strings.
-- API-based actions use `actions/github-script@v8`.
+- API-based actions use `actions/github-script@v9`.
 - Next Version uses `actions/github-script@v9` (Node 24) only as a wrapper for local Git reads; it does not call the GitHub API.
 - Refs, workflow state changes, and pull requests are not transactional across multiple action calls. If a workflow changes more than one repository resource, handle partial failure explicitly.
 
