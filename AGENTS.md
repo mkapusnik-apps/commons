@@ -19,7 +19,7 @@ Consumers use root-level action paths at floating major tags such as `mkapusnik-
 
 ## External Action References
 
-- External GitHub Actions used by this repository must use the highest available stable major reference (`@vN`). Do not replace it with a minor, patch, or commit-SHA pin unless explicitly authorized.
-- An upstream major reference may be a tag or a branch. Check both before declaring a reference missing.
-- When auditing updates, compare resolved commit SHAs, peeling annotated tags, and inspect the relevant content changes. A more specific reference name does not prove an update.
-- If a major reference lags behind a newer release in the same major, report the upstream limitation; do not bypass this policy by narrowing the pin.
+- External GitHub Actions used by this repository must track the latest stable release using the clearest reference that resolves to it.
+- Prefer the highest stable major reference (`@vN`) when it resolves to the latest stable release's commit. If it lags behind, use the explicit latest stable minor or patch reference instead.
+- Upstream references may be tags or branches. Check both before declaring a reference missing.
+- When auditing updates, compare resolved commit SHAs, peeling annotated tags, and inspect relevant content changes. A more specific reference name alone does not prove an update.
