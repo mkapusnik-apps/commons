@@ -209,14 +209,42 @@ class ReleaseNotesTest(unittest.TestCase):
         result = self.run_helper("result", NOTES=notes)
         self.assertEqual(result["notes"], notes)
         self.assertEqual(result["status"], "generated")
-        self.run_helper("result", success=False, NOTES=notes + "🎲")
+        result = self.run_helper("result", success=False, NOTES=notes + "🎲")
+        self.assertNotIn("notes", result)
+        self.assertNotIn("status", result)
         result = self.run_helper("result", NOTES=" \nNew app build.\n ")
         self.assertEqual(result["notes"], "New app build.")
         self.assertEqual(result["status"], "no_changes")
 
+    def test_concise_technical_notes_keep_generated_status(self):
+        self.git("checkout", "-b", "test-updates", self.baseline)
+        source = self.make_commit("Update test suite", "tests.txt")
+        self.git("checkout", "--detach", source)
+        context = self.run_helper(SOURCE_SHA=source)
+        self.assertEqual(context["unchanged"], "false")
+        self.assertEqual(self.evidence(context)["subjects"], ["Update test suite"])
+        for language, text in (("English", "Test-suite updates."),
+                               ("Czech", "Aktualizace testů.")):
+            with self.subTest(language=language):
+                result = self.run_helper("result", NOTES=f" \n{text}\n ", LANGUAGE=language)
+                self.assertEqual(result["notes"], text)
+                self.assertEqual(result["status"], "generated")
+
     def test_blank_or_report_output_does_not_become_fallback(self):
-        for text in ("", " \n", "```text\nNotes\n```", "## Summary\nDone", "Notes\x01bad"):
+        for text in ("", " \n", "```text\nNotes\n```", "## Summary\nDone",
+                     "## Verification\nDone", "## Test results\nDone",
+                     "Notes\x01bad", "Notes\x1fbad", "Notes\rbad"):
             with self.subTest(text=text):
+                result = self.run_helper("result", success=False, NOTES=text)
+                self.assertNotIn("notes", result)
+                self.assertNotIn("status", result)
+
+    def test_notes_followed_by_report_are_rejected_as_a_whole(self):
+        for report in ("## Summary\nDone", "## Verification\nTests passed.",
+                       "## Changes\nUpdated code.\n## Test results\nAll passed."):
+            with self.subTest(report=report):
+                text = "Player status fixed.\n\n" + report
+                self.assertLess(len(text), int(self.env["MAX_CHARACTERS"]))
                 result = self.run_helper("result", success=False, NOTES=text)
                 self.assertNotIn("notes", result)
                 self.assertNotIn("status", result)

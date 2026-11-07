@@ -38,7 +38,7 @@ detail, not a supported standalone validation API.
 | `audience` | Yes | None | Intended readers; must not be blank. |
 | `language` | No | `English` | Output language; must not be blank. |
 | `max_characters` | Yes | None | Positive maximum length in Unicode code points, including internal whitespace. |
-| `empty_message` | Yes | None | Valid fallback text for unchanged source or no meaningful audience-facing change. |
+| `empty_message` | Yes | None | Valid fallback text for identical source and baseline. |
 | `instructions_file` | No | Empty | Optional wording/format instructions within the caller checkout; relative to its root. |
 | `max_commits` | No | `40` | Positive maximum number of first-parent commit subjects supplied to Junie. |
 | `max_files` | No | `80` | Positive maximum number of changed file names supplied to Junie. |
@@ -68,15 +68,27 @@ do not cross job runners.
   truncation flag. Emit a warning when context is truncated. Without a baseline,
   use bounded source history and only the source commit's changed files, never
   an empty-tree diff. A root commit has no parent diff.
-- **RN-03 — No-change path:** When source and baseline match, skip Junie and
-  return the validated fallback with `status: no_changes`. Otherwise ask Junie
-  for only supported audience-facing changes in the requested language and
-  format, or the fallback when no meaningful audience-facing change exists.
-- **RN-04 — Output validation:** Trim surrounding whitespace and reject blank
+- **RN-03 — Release-note content:** When source and baseline match, skip Junie
+  and return the validated `empty_message` with `status: no_changes`. Otherwise,
+  Junie's entire final response must contain only concise, factual release notes
+  in the requested language and format, within the character limit, never a task
+  report or technical appendix:
+  - For changes relevant to the audience, describe supported audience impacts.
+    For mixed changes, prioritize those impacts rather than a technical inventory.
+  - For nonempty changes without audience impact, return one short line naming
+    the actual, supported content, not `empty_message`. Examples such as
+    `CI/CD optimizations`, `Test-suite updates`, and `Dependency updates` are
+    illustrative, not fixed fallback text; use them only when supported and in
+    the requested language.
+
+  Truncated evidence does not establish the absence of audience-relevant changes.
+- **RN-04 — Output validation:** Validate the entire returned response, not a
+  fragment extracted from a report. Trim surrounding whitespace and reject blank
   or overlength text, code fences, common task-report headings, and ASCII control
-  characters below U+0020 other than newline and tab. Execution errors fail the
-  action; they never become fallback notes. Validation does not establish
-  factual completeness or audience relevance.
+  characters below U+0020 other than newline and tab. Generation, execution, and
+  validation errors fail the action; they never become fallback notes. Validation
+  does not establish factual completeness, audience relevance, or full prompt
+  compliance.
 - **RN-05 — Session lifecycle:** Isolate HOME, temporary files, Bun/XDG state,
   Junie state, and work directories per invocation. Temporarily provide Junie's
   local origin lookup at `source_sha`, including on tag pushes, without pushing

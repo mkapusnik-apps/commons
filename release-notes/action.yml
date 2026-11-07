@@ -24,7 +24,7 @@ inputs:
     description: Maximum number of Unicode code points, including whitespace.
     required: true
   empty_message:
-    description: Exact text for an unchanged source or no meaningful audience-facing changes.
+    description: Exact text for identical source and baseline.
     required: true
   instructions_file:
     description: Optional project-specific content instructions, relative to the checkout root.
