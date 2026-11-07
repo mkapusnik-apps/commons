@@ -137,7 +137,6 @@ def session():
     git("check-ref-format", f"refs/heads/{branch}")
     directory = Path(tempfile.mkdtemp(prefix="release-notes-", dir=os.environ["RUNNER_TEMP"]))
     output("directory", directory)
-    output("notes_file", directory / "notes.txt")
     refs = [f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"]
     saved = {ref: git("rev-parse", "--verify", "--quiet", ref, check=False).stdout.strip()
              for ref in refs}
@@ -163,12 +162,7 @@ def cleanup():
 
 
 def result():
-    if os.environ["UNCHANGED"] == "true":
-        text = os.environ["EMPTY_MESSAGE"]
-    else:
-        # Preserve control characters for validation rather than normalizing newlines.
-        text = Path(os.environ["NOTES_FILE"]).read_bytes().decode("utf-8")
-    notes = validate(text, positive("MAX_CHARACTERS"))
+    notes = validate(os.environ["NOTES"], positive("MAX_CHARACTERS"))
     output("notes", notes)
     output("status", "no_changes" if notes == os.environ["EMPTY_MESSAGE"].strip() else "generated")
 
