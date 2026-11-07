@@ -37,6 +37,7 @@ class ReleaseNotesTest(unittest.TestCase):
         self.source = self.make_commit("Fix visible player status", "player.txt")
         self.git("checkout", "--detach", self.source)
         self.out = self.root / "outputs"
+        self.notes_file = self.root / "generated notes.txt"
         self.helper = HELPER
         self.env = {
             **os.environ,
@@ -47,6 +48,7 @@ class ReleaseNotesTest(unittest.TestCase):
             "LANGUAGE": "English", "EMPTY_MESSAGE": "New app build.",
             "INSTRUCTIONS_FILE": "", "RUNNER_TEMP": str(self.root),
             "GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/tags/published",
+            "UNCHANGED": "false", "NOTES_FILE": str(self.notes_file),
         }
 
     def git(self, *args):
@@ -114,9 +116,11 @@ class ReleaseNotesTest(unittest.TestCase):
         self.assertEqual(result["unchanged"], "true")
         self.assertEqual(result["context_truncated"], "false")
         self.assertNotIn("prompt", result)
-        result = self.run_helper("result", NOTES=self.env["EMPTY_MESSAGE"])
+        self.assertFalse(self.notes_file.exists())
+        result = self.run_helper("result", UNCHANGED=result["unchanged"], NOTES_FILE="")
         self.assertEqual(result["notes"], self.env["EMPTY_MESSAGE"])
         self.assertEqual(result["status"], "no_changes")
+        self.assertFalse(self.notes_file.exists())
 
     def test_absent_baseline_requires_explicit_policy(self):
         self.run_helper(success=False, BASELINE_SHA="", BASELINE_REF="refs/tags/missing")
@@ -206,20 +210,47 @@ class ReleaseNotesTest(unittest.TestCase):
 
     def test_multiline_unicode_output_and_fallback_status(self):
         notes = "Player status fixed.\n" + "🎲" * 479
-        result = self.run_helper("result", NOTES=notes)
+        self.notes_file.write_text(notes, encoding="utf-8")
+        result = self.run_helper("result")
         self.assertEqual(result["notes"], notes)
         self.assertEqual(result["status"], "generated")
-        self.run_helper("result", success=False, NOTES=notes + "🎲")
-        result = self.run_helper("result", NOTES=" \nNew app build.\n ")
+        self.notes_file.write_text(notes + "🎲", encoding="utf-8")
+        self.run_helper("result", success=False)
+        self.notes_file.write_text(" \nNew app build.\n ", encoding="utf-8")
+        result = self.run_helper("result")
         self.assertEqual(result["notes"], "New app build.")
         self.assertEqual(result["status"], "no_changes")
 
-    def test_blank_or_report_output_does_not_become_fallback(self):
-        for text in ("", " \n", "```text\nNotes\n```", "## Summary\nDone", "Notes\x01bad"):
-            with self.subTest(text=text):
-                result = self.run_helper("result", success=False, NOTES=text)
+    def test_explicit_notes_are_independent_of_task_report(self):
+        self.notes_file.write_text(" \nPlayer status fixed.\n ", encoding="utf-8")
+        report = "## Changes\nWrote release notes.\n## Verification\nNo tests run."
+        result = self.run_helper("result", NOTES=report)
+        self.assertEqual(result["notes"], "Player status fixed.")
+        self.assertEqual(result["status"], "generated")
+
+    def test_missing_or_unreadable_notes_do_not_use_report_fallback(self):
+        for path in (self.notes_file, self.root):
+            with self.subTest(path=path):
+                result = self.run_helper("result", success=False, NOTES_FILE=str(path),
+                                         NOTES=self.env["EMPTY_MESSAGE"])
                 self.assertNotIn("notes", result)
                 self.assertNotIn("status", result)
+
+    def test_blank_or_report_output_does_not_become_fallback(self):
+        for text in ("", " \n", "```text\nNotes\n```", "## Summary\nDone",
+                     "## Verification\nDone", "## Test results\nDone",
+                     "Notes\x01bad", "Notes\x00bad", "Notes\rbad"):
+            with self.subTest(text=text):
+                self.notes_file.write_bytes(text.encode("utf-8"))
+                result = self.run_helper("result", success=False, NOTES=self.env["EMPTY_MESSAGE"])
+                self.assertNotIn("notes", result)
+                self.assertNotIn("status", result)
+
+    def test_invalid_utf8_notes_do_not_become_fallback(self):
+        self.notes_file.write_bytes(b"Player status fixed.\xff")
+        result = self.run_helper("result", success=False, NOTES=self.env["EMPTY_MESSAGE"])
+        self.assertNotIn("notes", result)
+        self.assertNotIn("status", result)
 
     def test_branch_tag_and_dispatch_sessions_restore_refs_after_failure(self):
         for event, ref in (("push", "refs/tags/nightly"), ("push", "refs/heads/master"),
@@ -235,7 +266,7 @@ class ReleaseNotesTest(unittest.TestCase):
                 self.assertEqual(self.git("rev-parse", remote), self.source)
                 # Emulate Junie's checkout followed by a generator error.
                 self.git("checkout", "-B", branch, remote)
-                self.run_helper("result", success=False, NOTES="")
+                self.run_helper("result", success=False, NOTES_FILE=result["notes_file"])
                 self.run_helper("cleanup", SESSION_DIRECTORY=str(directory))
                 self.assertFalse(directory.exists())
                 self.assertEqual(self.git("rev-parse", local), self.baseline)
@@ -258,14 +289,20 @@ class ReleaseNotesTest(unittest.TestCase):
         first = self.run_helper("session")
         second = self.run_helper("session")
         self.assertNotEqual(first["directory"], second["directory"])
+        self.assertNotEqual(first["notes_file"], second["notes_file"])
         for result in (second, first):
             directory = Path(result["directory"])
+            notes_file = Path(result["notes_file"])
+            self.assertEqual(notes_file, directory / "notes.txt")
+            self.assertFalse(notes_file.exists())
             self.assertTrue((directory / "home").is_dir())
             self.assertTrue((directory / "tmp").is_dir())
             self.assertTrue((directory / "work").is_dir())
             self.assertTrue(result["path"].startswith(f"{directory}/home/.local/bin:"))
+            notes_file.write_text("Player status fixed.", encoding="utf-8")
             self.run_helper("cleanup", SESSION_DIRECTORY=str(directory))
             self.assertFalse(directory.exists())
+            self.assertFalse(notes_file.exists())
 
 
 if __name__ == "__main__":

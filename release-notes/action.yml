@@ -111,14 +111,18 @@ runs:
         attach_github_context_to_custom_prompt: false
         allowed_mcp_servers: ''
         junie_work_dir: ${{ steps.session.outputs.directory }}/work
-        prompt: ${{ steps.context.outputs.prompt }}
+        prompt: |
+          ${{ steps.context.outputs.prompt }}
+
+          Output file (UTF-8): ${{ steps.session.outputs.notes_file }}
 
     - name: Validate and expose notes
       id: result
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        NOTES: ${{ steps.context.outputs.unchanged == 'true' && inputs.empty_message || steps.junie.outputs.junie_summary }}
+        UNCHANGED: ${{ steps.context.outputs.unchanged }}
+        NOTES_FILE: ${{ steps.session.outputs.notes_file }}
         EMPTY_MESSAGE: ${{ inputs.empty_message }}
         MAX_CHARACTERS: ${{ inputs.max_characters }}
       run: python3 "$ACTION_PATH/release_notes.py" result
