@@ -9,6 +9,14 @@ inputs:
     description: Initial numeric baseline tag, used only when baseline-tag does not exist.
     required: false
     default: ''
+  fallback-version:
+    description: Numeric X.Y.Z baseline value, used only when baseline-tag is absent and no fallback-tag is supplied.
+    required: false
+    default: ''
+  minimum-code:
+    description: Nonnegative integer code high-water mark without leading zeroes. Required for empty numeric history.
+    required: false
+    default: ''
   annotation-prefix:
     description: Literal annotation prefix without surrounding whitespace, followed by a space and X.Y.Z.
     required: true
@@ -34,6 +42,8 @@ runs:
         NEXT_VERSION_ACTION_PATH: ${{ github.action_path }}
         NEXT_VERSION_BASELINE_TAG: ${{ inputs.baseline-tag }}
         NEXT_VERSION_FALLBACK_TAG: ${{ inputs.fallback-tag }}
+        NEXT_VERSION_FALLBACK_VERSION: ${{ inputs.fallback-version }}
+        NEXT_VERSION_MINIMUM_CODE: ${{ inputs.minimum-code }}
         NEXT_VERSION_ANNOTATION_PREFIX: ${{ inputs.annotation-prefix }}
         NEXT_VERSION_SOURCE_SHA: ${{ inputs.source-sha }}
       with:

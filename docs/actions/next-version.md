@@ -12,10 +12,14 @@ The composite wrapper loads `calculate.cjs` from its own `github.action_path` an
 | --- | --- | --- | --- |
 | `baseline-tag` | Yes | None | Production marker tag whose commit must identify exactly one positive-integer numeric version tag. Supply a bare tag name. |
 | `fallback-tag` | No | Empty | Initial positive-integer numeric tag, used only when the baseline marker does not exist. It must already exist when needed. |
+| `fallback-version` | No | Empty | Baseline version value in the same numeric `X.Y.Z` format as version annotations, without the annotation prefix. Used only when the production marker is absent and no `fallback-tag` is supplied; it need not correspond to a tag. |
+| `minimum-code` | No | Empty | Nonnegative integer code high-water mark: `0` or a positive integer without leading zeroes. It need not correspond to a tag. Required to calculate from empty numeric history. |
 | `annotation-prefix` | Yes | None | Literal, nonempty, single-line annotation prefix without surrounding whitespace, followed in the tag subject by a space and `X.Y.Z`. |
 | `source-sha` | No | Empty | Source commit to reject if it already has any positive-integer numeric tag. Omit for forecasts. |
 
 Names such as `play-production`, the code `411`, and the prefix `Play version` are examples, not built-in policy. The caller owns its marker, initial baseline, and literal prefix.
+
+Both value inputs are opt-in. Omitting both preserves tag-backed behavior, including failure when numeric history is empty. Invalid supplied value inputs must fail rather than act as omitted defaults.
 
 ## Outputs
 
@@ -28,15 +32,18 @@ Outputs are published only after successful calculation; a failed calculation pu
 
 ## Calculation and failure behavior
 
-1. Select the highest positive-integer numeric tag using Git version ordering. Ignore nonnumeric names, zero, and names with leading zeroes. Numeric history must already exist; the action does not generate the first code.
+1. Select the highest positive-integer numeric tag using Git version ordering. Ignore nonnumeric names, zero, and names with leading zeroes. Empty numeric history requires explicit `fallback-version` and `minimum-code` values; this does not create a numeric tag.
 2. If supplied, resolve `source-sha` to a commit and reject it when any numeric tag already points at that commit, including an older code. An invalid source fails rather than disabling the guard.
-3. Resolve the production marker, or the supplied numeric fallback only if that marker is absent. The resolved commit must have exactly one numeric tag. An existing but unreadable or ambiguous marker never triggers fallback.
-4. Read the baseline and highest-code tag subjects. Both used numeric tags must be annotated tags with the literal subject `<annotation-prefix> X.Y.Z`. Missing, lightweight, or malformed used annotations fail; irrelevant malformed historical annotations are ignored.
-5. Target the baseline major and next minor. If the highest-code candidate is already in that series, increment its patch; otherwise start at patch zero. Increment the highest numeric code by one. A candidate with a higher major or a minor ahead of the target fails for manual resolution rather than scanning for an older replacement.
+3. Resolve the production marker when it exists; it remains authoritative over either fallback. Only when it is absent, resolve a supplied `fallback-tag`, or use `fallback-version` if no `fallback-tag` is supplied. Without any usable baseline, fail. A tag-backed baseline commit must identify exactly one numeric tag. An existing but malformed, unreadable, or ambiguous baseline must fail, never fall through to a value baseline; a supplied but missing `fallback-tag` also fails rather than using `fallback-version`.
+4. Read the baseline tag subject when the baseline is tag-backed, and the highest-code tag subject when numeric history exists. Every used numeric tag must be annotated with the literal subject `<annotation-prefix> X.Y.Z`. Missing, lightweight, or malformed used annotations fail; irrelevant malformed historical annotations are ignored. A value baseline supplies only the version name, not a synthetic tag or historical candidate.
+5. Target the baseline major and next minor. If the highest-code candidate is already in that series, increment its patch; otherwise start at patch zero. With no numeric history, start at patch zero. A candidate with a higher major or a minor ahead of the target fails for manual resolution rather than scanning for an older replacement.
+6. With numeric history, return code `max(minimum-code, highestCode) + 1` when a minimum is supplied, or `highestCode + 1` otherwise. With empty numeric history, return `minimum-code + 1`. The minimum affects only code allocation, not selection of the latest historical candidate or its semantic series.
 
 For example, baseline `2.2.16` and latest candidate `2.3.9` at code `426` produce name `2.3.10` and code `427`. When baseline and latest are both `2.3.1`, the next name is `2.4.0`.
 
-Before adoption, the release owner must confirm that the highest numeric code carries the highest historical candidate version name. The action relies on that history invariant rather than auditing all older annotations.
+With an absent production marker, no numeric history, no `fallback-tag`, `fallback-version: '0.0.0'`, and `minimum-code: '2'`, the outputs are `name: '0.1.0'` and `code: '3'`. With the first example's history, minimum `2` still yields code `427`, while minimum `500` yields code `501`; the name remains `2.3.10`.
+
+When numeric history exists, the release owner must confirm before adoption that the highest numeric code carries the highest historical candidate version name. The action relies on that history invariant rather than auditing all older annotations.
 
 ## Caller setup and permissions
 
@@ -66,6 +73,17 @@ steps:
     with:
       baseline-tag: play-production
       fallback-tag: '411'
+      annotation-prefix: Play version
+      source-sha: ${{ github.sha }}
+```
+
+For a value-only bootstrap, omit `fallback-tag` and use the following inputs instead. Retain the same checkout and permissions; no baseline tag, numeric tag, or reservation is created:
+
+```yaml
+    with:
+      baseline-tag: play-production
+      fallback-version: '0.0.0'
+      minimum-code: '2'
       annotation-prefix: Play version
       source-sha: ${{ github.sha }}
 ```
