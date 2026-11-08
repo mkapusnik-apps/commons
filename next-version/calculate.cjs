@@ -1,4 +1,4 @@
-const { execFileSync } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
 
 const numeric = /^[1-9][0-9]*$/;
 const nonnegative = /^(0|[1-9][0-9]*)$/;
@@ -40,12 +40,14 @@ function nextVersion({ baselineTag, fallbackTag = '', fallbackVersion = '', mini
     throw new Error('Input "minimum-code" must be a nonnegative integer without leading zeroes');
   }
   const git = (...args) => {
-    try {
-      return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
-    } catch (error) {
-      const detail = error.stderr?.toString().trim() || error.message;
+    const result = spawnSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
+    const diagnostic = result.stderr?.trim();
+    // Git can warn and omit corrupt refs while exiting successfully.
+    if (result.error || result.status !== 0 || diagnostic) {
+      const detail = diagnostic || result.error?.message || `exit status ${result.status}`;
       throw new Error(`Git ${args[0]} failed: ${detail}`);
     }
+    return result.stdout.trim();
   };
   git('check-ref-format', `refs/tags/${baselineTag}`);
   const latestCode = git('tag', '--list', '--sort=-version:refname')

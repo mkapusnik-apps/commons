@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
-const { execFileSync } = require('node:child_process');
-const { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
+const { execFileSync, spawnSync } = require('node:child_process');
+const { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { test } = require('node:test');
@@ -101,6 +101,44 @@ test('bootstraps empty numeric history from values without creating tags or edit
   assert.equal(readFileSync(join(f.dir, 'pubspec.yaml'), 'utf8'), pubspec);
   assert.deepEqual(f.calculate({ ...inputs, minimumCode: '0' }), { name: '0.1.0', code: '1' });
 });
+
+for (const history of [false, true]) {
+  for (const refName of ['999', 'play-production']) {
+    test(`a malformed ref ${refName} cannot masquerade as absence with ${history ? 'existing' : 'empty'} numeric history`, t => {
+      const f = fixture(t, { history, marker: false });
+      Object.assign(f.inputs, {
+        fallbackTag: '', fallbackVersion: history ? '2.2.16' : '0.0.0', minimumCode: '2',
+      });
+      const tagsDir = join(f.dir, '.git', 'refs', 'tags');
+      const refPath = join(tagsDir, refName);
+      writeFileSync(refPath, 'not-an-object-id\n');
+      writeFileSync(join(f.dir, 'pubspec.yaml'), 'name: caller\nversion: 0.0.0+2\n');
+      const enumeration = spawnSync('git', ['tag', '--list', '--sort=-version:refname'], {
+        cwd: f.dir, encoding: 'utf8', stdio: 'pipe',
+      });
+      assert.equal(enumeration.status, 0, 'Git can skip a broken ref without failing');
+      assert.notEqual(enumeration.stderr.trim(), '', 'the skipped ref must produce a diagnostic');
+      assert.ok(!enumeration.stdout.split('\n').includes(refName), 'the broken ref looks absent in stdout');
+      const snapshot = () => ({
+        refs: f.git('for-each-ref', '--format=%(refname) %(objectname)'),
+        tagNames: readdirSync(tagsDir).sort(),
+        damagedRef: readFileSync(refPath, 'utf8'),
+        pubspec: readFileSync(join(f.dir, 'pubspec.yaml'), 'utf8'),
+        status: f.git('status', '--porcelain'),
+      });
+      const before = snapshot();
+      const outputs = [];
+      try {
+        assert.throws(() => run({
+          core: { setOutput: (...args) => outputs.push(args) }, env: actionEnv(f),
+        }), { message: `Git tag failed: ${enumeration.stderr.trim()}` });
+      } finally {
+        assert.deepEqual(snapshot(), before, 'failure must preserve normal and damaged refs and caller files');
+        assert.deepEqual(outputs, [], 'ref-reading corruption must publish neither output');
+      }
+    });
+  }
+}
 
 for (const inputs of [{}, { fallbackVersion: '0.0.0' }, { minimumCode: '2' }]) {
   test(`empty numeric history requires both explicit value inputs: ${JSON.stringify(inputs)}`, t => {
