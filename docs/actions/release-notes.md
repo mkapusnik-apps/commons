@@ -75,11 +75,16 @@ do not cross job runners.
   report or technical appendix:
   - For changes relevant to the audience, describe supported audience impacts.
     For mixed changes, prioritize those impacts rather than a technical inventory.
-  - For nonempty changes without audience impact, return one short line naming
+  - For nonempty changes without audience impact, default to one short line naming
     the actual, supported content, not `empty_message`. Examples such as
     `CI/CD optimizations`, `Test-suite updates`, and `Dependency updates` are
     illustrative, not fixed fallback text; use them only when supported and in
     the requested language.
+    An explicit caller content instruction to return an exact no-audience-impact
+    message must take precedence over this technical-only default when the source
+    context supports no audience impact. Return the specified text exactly,
+    including `empty_message` when requested. This exception does not override
+    **RN-04**.
 
   Truncated evidence does not establish the absence of audience-relevant changes.
 - **RN-04 — Output validation:** Validate the entire returned response, not a
