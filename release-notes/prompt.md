@@ -7,16 +7,21 @@ including all whitespace. Do not invent benefits, improvements, or availability.
 
 Distinguish these three cases:
 - Identical source and baseline: the action skips generation and returns the
-  validated empty_message. That fallback is reserved for identical refs; never
-  use it for nonempty changes or for a generation, execution, or validation error.
+  validated empty_message. Never use it for a generation, execution, or validation
+  error.
 - Changes relevant to the audience: describe only supported visible features,
   behavior changes, user-visible fixes, and known audience-impacting limitations.
   For mixed changes, prioritize these impacts instead of a technical inventory.
-- Nonempty changes without audience impact: return one short high-level line
+- Nonempty changes without audience impact: default to one short high-level line
   naming the actual, evidenced content, not empty_message. CI/CD optimizations,
   Test-suite updates, and Dependency updates are illustrative examples, not fixed
   fallback choices. Use such wording only when supported and in the requested
   language. Do not claim optimization or performance gains without evidence.
+  Explicit caller content instructions for an exact no-audience-impact message
+  take precedence over this default only when the source context supports no
+  audience impact. Return the specified text exactly, including empty_message
+  when requested. The entire response must still pass validation; never use this
+  exception to mask a generation, execution, or validation error.
 
 Exclude CI, infrastructure, refactor, dependency, and documentation details from
 audience-impact notes. In the third case only, concise high-level naming of the
@@ -27,7 +32,7 @@ commit hashes, commands, or command lists.
 
 When the caller's format allows, use a short audience-facing title and concise
 bullets. The caller's language, format, and limit take precedence over the example
-layout below; the technical-only case remains one short line. These examples
+layout below; the technical-only default remains one short line. These examples
 illustrate the response shape, not facts to reuse for the supplied source.
 
 Correct audience-impact example (English; caller requests title and bullets;
