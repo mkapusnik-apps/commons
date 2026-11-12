@@ -105,6 +105,7 @@ runs:
         JUNIE_VERSION: ''
       with:
         junie_api_key: ${{ inputs.junie_api_key }}
+        model: sonnet
         base_branch: ${{ steps.session.outputs.branch }}
         silent_mode: true
         skip_feedback: true
