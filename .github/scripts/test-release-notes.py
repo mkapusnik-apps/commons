@@ -47,6 +47,7 @@ class ReleaseNotesTest(unittest.TestCase):
             "LANGUAGE": "English", "EMPTY_MESSAGE": "New app build.",
             "INSTRUCTIONS_FILE": "", "RUNNER_TEMP": str(self.root),
             "GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/tags/published",
+            "UNCHANGED": "false",
         }
 
     def git(self, *args):
@@ -114,7 +115,7 @@ class ReleaseNotesTest(unittest.TestCase):
         self.assertEqual(result["unchanged"], "true")
         self.assertEqual(result["context_truncated"], "false")
         self.assertNotIn("prompt", result)
-        result = self.run_helper("result", NOTES=self.env["EMPTY_MESSAGE"])
+        result = self.run_helper("result", UNCHANGED=result["unchanged"], NOTES="not JSON")
         self.assertEqual(result["notes"], self.env["EMPTY_MESSAGE"])
         self.assertEqual(result["status"], "no_changes")
 
@@ -206,13 +207,14 @@ class ReleaseNotesTest(unittest.TestCase):
 
     def test_multiline_unicode_output_and_fallback_status(self):
         notes = "Player status fixed.\n" + "🎲" * 479
-        result = self.run_helper("result", NOTES=notes)
+        result = self.run_helper("result", NOTES=json.dumps({"notes": notes}))
         self.assertEqual(result["notes"], notes)
         self.assertEqual(result["status"], "generated")
-        result = self.run_helper("result", success=False, NOTES=notes + "🎲")
+        result = self.run_helper("result", success=False,
+                                 NOTES=json.dumps({"notes": notes + "🎲"}))
         self.assertNotIn("notes", result)
         self.assertNotIn("status", result)
-        result = self.run_helper("result", NOTES=" \nNew app build.\n ")
+        result = self.run_helper("result", NOTES=json.dumps({"notes": " \nNew app build.\n "}))
         self.assertEqual(result["notes"], "New app build.")
         self.assertEqual(result["status"], "no_changes")
 
@@ -226,16 +228,17 @@ class ReleaseNotesTest(unittest.TestCase):
         for language, text in (("English", "Test-suite updates."),
                                ("Czech", "Aktualizace testů.")):
             with self.subTest(language=language):
-                result = self.run_helper("result", NOTES=f" \n{text}\n ", LANGUAGE=language)
+                result = self.run_helper("result", NOTES=json.dumps({"notes": f" \n{text}\n "}),
+                                         LANGUAGE=language)
                 self.assertEqual(result["notes"], text)
                 self.assertEqual(result["status"], "generated")
 
     def test_blank_or_report_output_does_not_become_fallback(self):
         for text in ("", " \n", "```text\nNotes\n```", "## Summary\nDone",
                      "## Verification\nDone", "## Test results\nDone",
-                     "Notes\x01bad", "Notes\x1fbad", "Notes\rbad"):
+                     "Notes\x00bad", "Notes\x01bad", "Notes\x1fbad", "Notes\rbad"):
             with self.subTest(text=text):
-                result = self.run_helper("result", success=False, NOTES=text)
+                result = self.run_helper("result", success=False, NOTES=json.dumps({"notes": text}))
                 self.assertNotIn("notes", result)
                 self.assertNotIn("status", result)
 
@@ -245,9 +248,127 @@ class ReleaseNotesTest(unittest.TestCase):
             with self.subTest(report=report):
                 text = "Player status fixed.\n\n" + report
                 self.assertLess(len(text), int(self.env["MAX_CHARACTERS"]))
-                result = self.run_helper("result", success=False, NOTES=text)
+                result = self.run_helper("result", success=False, NOTES=json.dumps({"notes": text}))
                 self.assertNotIn("notes", result)
                 self.assertNotIn("status", result)
+
+    def test_generated_json_whitespace_escapes_and_unicode(self):
+        text = 'He said "Ready".\n\tCafé 🎲 \\ done.'
+        for payload in (
+            json.dumps({"notes": text}, ensure_ascii=False),
+            json.dumps({"notes": text}, ensure_ascii=True),
+            json.dumps({"notes": text}, indent=2),
+            r'{"no\u0074es":"He said \"Ready\".\n\tCaf\u00e9 \ud83c\udfb2 \\ done."}',
+        ):
+            with self.subTest(payload=payload):
+                result = self.run_helper("result", NOTES=" \t\r\n" + payload + "\r\n\t ")
+                self.assertEqual(result["notes"], text)
+                self.assertEqual(result["status"], "generated")
+
+    def test_generated_response_requires_one_exact_json_object(self):
+        valid = '{"notes":"Player status fixed."}'
+        for payload in (
+            "", " \n", "Player status fixed.", self.env["EMPTY_MESSAGE"],
+            "{}", '{"Notes":"Wrong key."}', '{"notes ":"Wrong key."}',
+            '{"notes":"Notes.","report":"Done."}', '{"report":"Done."}',
+            '"Player status fixed."', '[{"notes":"Notes."}]', "null", "true", "42",
+            '{"notes":null}', '{"notes":true}', '{"notes":42}', '{"notes":1.5}',
+            '{"notes":[]}', '{"notes":{}}', '{"notes":NaN}',
+            '{"notes":Infinity}', '{"notes":-Infinity}',
+            '{"notes":"Notes.",}', "{'notes':'Notes.'}",
+            r'{"notes":"Invalid \q escape."}', '{"notes":"Unescaped\nnewline."}',
+            '{"notes":"Unescaped\ttab."}', '// comment\n' + valid,
+            "\ufeff" + valid, "\u00a0" + valid, valid + "\u00a0", "\f" + valid,
+            "```json\n" + valid + "\n```", "Completed:\n" + valid,
+            valid + "\n## Verification\nDone.", valid + "\n" + valid, valid + valid,
+            valid + "\nnull", valid[:-1], '{"notes":"Truncated',
+        ):
+            with self.subTest(payload=payload):
+                result = self.run_helper("result", success=False, NOTES=payload)
+                self.assertNotIn("notes", result)
+                self.assertNotIn("status", result)
+
+    def test_duplicate_decoded_keys_are_rejected(self):
+        for payload in (
+            '{"notes":"Notes.","notes":"Notes."}',
+            '{"notes":"Report.","notes":"Notes."}',
+            r'{"notes":"Notes.","no\u0074es":"Notes."}',
+            r'{"\u006eotes":"Notes.","notes":"Notes."}',
+            r'{"no\u0074es":"Notes.","\u006eotes":"Notes."}',
+        ):
+            with self.subTest(payload=payload):
+                result = self.run_helper("result", success=False, NOTES=payload)
+                self.assertNotIn("notes", result)
+                self.assertNotIn("status", result)
+
+    def test_decoded_trimmed_limit_excludes_envelope_and_escapes(self):
+        text = '"\n\t🎲'
+        payload = json.dumps({"notes": " \n" + text + "\n "})
+        self.assertGreater(len(payload), len(text))
+        result = self.run_helper("result", NOTES=payload, MAX_CHARACTERS=str(len(text)),
+                                 EMPTY_MESSAGE="None")
+        self.assertEqual(result["notes"], text)
+        result = self.run_helper("result", success=False, NOTES=payload,
+                                 MAX_CHARACTERS=str(len(text) - 1), EMPTY_MESSAGE="None")
+        self.assertNotIn("notes", result)
+        self.assertNotIn("status", result)
+
+    def test_upstream_truncated_envelope_is_not_repaired(self):
+        payload = json.dumps({"notes": "x" * 15000})
+        marker = "\n\n... (output truncated due to size limits)"
+        truncated = payload[:15000 - len(marker)] + marker
+        result = self.run_helper("result", success=False, NOTES=truncated,
+                                 MAX_CHARACTERS="20000")
+        self.assertNotIn("notes", result)
+        self.assertNotIn("status", result)
+
+    def test_unchanged_source_returns_plaintext_without_decoding_junie_output(self):
+        for text in (self.env["EMPTY_MESSAGE"], '{"notes":"Literal caller text."}'):
+            with self.subTest(text=text):
+                result = self.run_helper("result", UNCHANGED="true", NOTES="broken JSON",
+                                         EMPTY_MESSAGE=" \n" + text + "\n ")
+                self.assertEqual(result["notes"], text)
+                self.assertEqual(result["status"], "no_changes")
+        for text in ("", "## Verification\nDone.", "x" * 501):
+            with self.subTest(text=text):
+                result = self.run_helper("result", success=False, UNCHANGED="true",
+                                         NOTES='{"notes":"Do not use this."}', EMPTY_MESSAGE=text)
+                self.assertNotIn("notes", result)
+                self.assertNotIn("status", result)
+
+    def test_explicit_no_audience_impact_message_is_decoded_exactly(self):
+        for text, status in ((self.env["EMPTY_MESSAGE"], "no_changes"),
+                             ('Build for "staging" only.', "generated"),
+                             ("Aktualizace testů.", "generated")):
+            with self.subTest(text=text):
+                (self.repo / "instructions.md").write_text(
+                    "For no audience impact, return exactly: " + text, encoding="utf-8")
+                context = self.run_helper(INSTRUCTIONS_FILE="instructions.md")
+                self.assertIn(text, context["prompt"])
+                result = self.run_helper("result", UNCHANGED=context["unchanged"],
+                                         NOTES=json.dumps({"notes": text}))
+                self.assertEqual(result["notes"], text)
+                self.assertEqual(result["status"], status)
+
+    def test_prompt_examples_and_caller_format_preserve_json_envelope(self):
+        (self.repo / "instructions.md").write_text("Use a title and bullets.", encoding="utf-8")
+        prompt = self.run_helper(INSTRUCTIONS_FILE="instructions.md")["prompt"]
+        self.assertIn("exactly one JSON object", prompt)
+        self.assertIn("cannot override the JSON envelope", prompt)
+        self.assertIn("Use a title and bullets.", prompt)
+        examples = [line for line in prompt.split("\nOutput settings:\n")[0].splitlines()
+                    if line.startswith('{"notes":')]
+        self.assertEqual(len(examples), 3)
+        for index, example in enumerate(examples):
+            with self.subTest(example=example):
+                decoded = json.loads(example)
+                self.assertEqual(set(decoded), {"notes"})
+                result = self.run_helper("result", NOTES=example, success=index < 2)
+                if index < 2:
+                    self.assertEqual(result["notes"], decoded["notes"])
+                else:
+                    self.assertNotIn("notes", result)
+                    self.assertNotIn("status", result)
 
     def test_branch_tag_and_dispatch_sessions_restore_refs_after_failure(self):
         for event, ref in (("push", "refs/tags/nightly"), ("push", "refs/heads/master"),

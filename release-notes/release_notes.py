@@ -49,6 +49,21 @@ def validate(text, limit):
     return text
 
 
+def parse_notes(response):
+    def unique_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("Junie response must not contain duplicate JSON keys")
+            value[key] = item
+        return value
+
+    value = json.loads(response, object_pairs_hook=unique_object)
+    if not isinstance(value, dict) or set(value) != {"notes"} or not isinstance(value["notes"], str):
+        raise ValueError("Junie response must be a JSON object containing only notes as a string")
+    return value["notes"]
+
+
 def context():
     limit = positive("MAX_CHARACTERS")
     max_commits, max_files = positive("MAX_COMMITS"), positive("MAX_FILES")
@@ -162,7 +177,9 @@ def cleanup():
 
 
 def result():
-    notes = validate(os.environ["NOTES"], positive("MAX_CHARACTERS"))
+    text = (os.environ["EMPTY_MESSAGE"] if os.environ.get("UNCHANGED") == "true"
+            else parse_notes(os.environ["NOTES"]))
+    notes = validate(text, positive("MAX_CHARACTERS"))
     output("notes", notes)
     output("status", "no_changes" if notes == os.environ["EMPTY_MESSAGE"].strip() else "generated")
 

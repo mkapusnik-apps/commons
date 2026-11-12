@@ -37,9 +37,9 @@ detail, not a supported standalone validation API.
 | `missing_baseline_policy` | No | `error` | `error` or `bounded-history`; the latter explicitly permits a first release without a baseline. |
 | `audience` | Yes | None | Intended readers; must not be blank. |
 | `language` | No | `English` | Output language; must not be blank. |
-| `max_characters` | Yes | None | Positive maximum length in Unicode code points, including internal whitespace. |
+| `max_characters` | Yes | None | Positive maximum length of trimmed release-note text in Unicode code points, including internal whitespace; JSON framing and escape syntax do not count. |
 | `empty_message` | Yes | None | Valid fallback text for identical source and baseline. |
-| `instructions_file` | No | Empty | Optional wording/format instructions within the caller checkout; relative to its root. |
+| `instructions_file` | No | Empty | Optional wording/format instructions for the release-note text within the caller checkout; relative to its root. |
 | `max_commits` | No | `40` | Positive maximum number of first-parent commit subjects supplied to Junie. |
 | `max_files` | No | `80` | Positive maximum number of changed file names supplied to Junie. |
 | `junie_api_key` | Yes | None | Caller-supplied Junie secret. |
@@ -52,7 +52,7 @@ do not cross job runners.
 
 | Output | Description |
 | --- | --- |
-| `notes` | Validated release-note text with surrounding whitespace removed. |
+| `notes` | Validated release-note text with surrounding whitespace removed, never the internal JSON envelope. |
 | `status` | `no_changes` when the text equals the trimmed `empty_message`; otherwise `generated`. This is not a semantic classifier. |
 | `source_sha` | Resolved source commit SHA. |
 | `baseline_sha` | Resolved baseline commit SHA, or empty for an explicit first release. |
@@ -69,10 +69,13 @@ do not cross job runners.
   use bounded source history and only the source commit's changed files, never
   an empty-tree diff. A root commit has no parent diff.
 - **RN-03 — Release-note content:** When source and baseline match, skip Junie
-  and return the validated `empty_message` with `status: no_changes`. Otherwise,
-  Junie's entire final response must contain only concise, factual release notes
-  in the requested language and format, within the character limit, never a task
-  report or technical appendix:
+  and return the validated plain-text `empty_message` with `status: no_changes`;
+  no JSON envelope is required on this path. Otherwise, Junie's entire final
+  response must be a JSON object of the form `{"notes":"…"}` under **RN-04**.
+  The `notes` string must contain only concise, factual release notes in the
+  requested language and format, within the character limit, never a task report
+  or technical appendix. Caller wording/format instructions apply only to the
+  string content and cannot override the JSON envelope:
   - For changes relevant to the audience, describe supported audience impacts.
     For mixed changes, prioritize those impacts rather than a technical inventory.
   - For nonempty changes without audience impact, default to one short line naming
@@ -82,18 +85,31 @@ do not cross job runners.
     the requested language.
     An explicit caller content instruction to return an exact no-audience-impact
     message must take precedence over this technical-only default when the source
-    context supports no audience impact. Return the specified text exactly,
-    including `empty_message` when requested. This exception does not override
-    **RN-04**.
+    context supports no audience impact. Return the specified text exactly inside
+    the `notes` string, including `empty_message` when requested. This exception
+    does not override **RN-04**.
 
   Truncated evidence does not establish the absence of audience-relevant changes.
-- **RN-04 — Output validation:** Validate the entire returned response, not a
-  fragment extracted from a report. Trim surrounding whitespace and reject blank
-  or overlength text, code fences, common task-report headings, and ASCII control
-  characters below U+0020 other than newline and tab. Generation, execution, and
-  validation errors fail the action; they never become fallback notes. Validation
-  does not establish factual completeness, audience relevance, or full prompt
-  compliance.
+- **RN-04 — Output validation:** For generated notes, parse the entire returned
+  response as exactly one valid JSON object with exactly one member, `notes`,
+  whose value is a string. Only JSON whitespace may surround the object. Reject
+  malformed JSON, duplicate keys (including equivalent escaped key spellings),
+  missing or additional members, non-object roots, and non-string values. Reject
+  surrounding prose, code fences, reports, or additional JSON values; never
+  extract a JSON fragment, coerce a value, or accept raw text instead.
+
+  Validate the decoded `notes` string, or the plain-text `empty_message` on the
+  unchanged-source path. Trim surrounding whitespace, then apply `max_characters`
+  to the resulting Unicode code points, including internal whitespace, not to
+  JSON framing or escape syntax. Reject blank or overlength text, code fences,
+  common task-report headings, and ASCII control characters below U+0020 other
+  than newline and tab. Expose only the validated text through the public `notes`
+  output; its interface remains a text string, not JSON.
+
+  Generation, execution, parsing, schema, and text-validation errors fail the
+  action; they never become fallback notes. Structural and text validation do
+  not establish factual completeness, audience relevance, or full prompt
+  compliance, including the absence of all task-report prose within `notes`.
 - **RN-05 — Session lifecycle:** Isolate HOME, temporary files, Bun/XDG state,
   Junie state, and work directories per invocation. Temporarily provide Junie's
   local origin lookup at `source_sha`, including on tag pushes, without pushing
