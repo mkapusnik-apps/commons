@@ -21,13 +21,13 @@ inputs:
     description: Output language.
     default: English
   max_characters:
-    description: Maximum number of Unicode code points, including whitespace.
+    description: Maximum trimmed release-note length in Unicode code points, excluding JSON framing.
     required: true
   empty_message:
     description: Exact text for identical source and baseline.
     required: true
   instructions_file:
-    description: Optional project-specific content instructions, relative to the checkout root.
+    description: Optional note-content instructions, relative to the checkout root; cannot override the JSON envelope.
     default: ''
   max_commits:
     description: Maximum number of first-parent commit subjects supplied to Junie.
@@ -41,7 +41,7 @@ inputs:
 
 outputs:
   notes:
-    description: Validated release-note text; no file handoff is required.
+    description: Validated release-note text, without the internal JSON envelope; no file handoff is required.
     value: ${{ steps.result.outputs.notes }}
   status:
     description: generated or no_changes.
@@ -119,7 +119,8 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        NOTES: ${{ steps.context.outputs.unchanged == 'true' && inputs.empty_message || steps.junie.outputs.junie_summary }}
+        UNCHANGED: ${{ steps.context.outputs.unchanged }}
+        NOTES: ${{ steps.junie.outputs.junie_summary }}
         EMPTY_MESSAGE: ${{ inputs.empty_message }}
         MAX_CHARACTERS: ${{ inputs.max_characters }}
       run: python3 "$ACTION_PATH/release_notes.py" result
